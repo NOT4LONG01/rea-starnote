@@ -19,7 +19,7 @@ command -v waydroid >/dev/null || { echo "waydroid is not installed (run: sudo b
 
 # 1. A small Wayland compositor shown as a window on the X11 desktop (so you can watch Android).
 if [ ! -S "$RUN/$SOCK" ]; then
-  weston --backend=x11 --socket="$SOCK" --width=1280 --height=800 >/tmp/waydroid-qa-weston.log 2>&1 &
+  weston --backend=x11 --socket="$SOCK" --width=1280 --height=800 --idle-time=0 >/tmp/waydroid-qa-weston.log 2>&1 &
   echo $! > "$PIDFILE"
   for _ in $(seq 1 30); do [ -S "$RUN/$SOCK" ] && break; sleep 0.5; done
 fi

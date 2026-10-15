@@ -34,7 +34,7 @@ const ICONS: Record<string, string> = {
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9h-9a6 6 0 000 12h3"/>',
   pen: '<path d="M16 3l5 5L8 21H3v-5z"/><path d="M13 6l5 5"/>',
   eraser: '<path d="M8 20h12"/><path d="M5 15L15 5a2 2 0 013 0l2 2a2 2 0 010 3L11 19H8l-3-3a1.4 1.4 0 010-1z"/>',
-  move: '<path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4M17 8l4 4-4 4"/>',
+  hand: '<path d="M18 11V6a2 2 0 00-4 0"/><path d="M14 10V4a2 2 0 00-4 0v2"/><path d="M10 10.5V6a2 2 0 00-4 0v8"/><path d="M18 8a2 2 0 114 0v6a8 8 0 01-8 8h-2c-2.8 0-4.5-.86-6-2.34l-3.6-3.6a2 2 0 012.83-2.82L7 15"/>',
   fit: '<path d="M8 4H5a1 1 0 00-1 1v3M16 4h3a1 1 0 011 1v3M8 20H5a1 1 0 01-1-1v-3M16 20h3a1 1 0 001-1v-3"/>',
   fitw: '<path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/>',
   fith: '<path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/>',
