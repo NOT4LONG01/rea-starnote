@@ -227,3 +227,20 @@ Typed text is rendered through an embedded WebView running a customized ProseMir
 * Exported text runs serialize character runs, bounding boxes, and styles via `onEditorTextRun`:
   $$\{ \text{text}, \text{style: } \{ \text{fontSize}, \text{color}, \text{bold}, \text{italic} \}, \text{rect: } \{ x, y, w, h \} \}$$
 
+
+---
+
+## 8. rea-starnote's own page metadata (`interop/pages.json`)
+
+Not part of StarNote's format: a sidecar this app writes for notes it manages, ignored by StarNote. Notes without it are
+read as StarNote wrote them (a single column of tiles `Page[0-0]`, `Page[1-0]`... is treated as a page stack, anything else
+as a free-form canvas).
+
+```json
+{ "version": 1,
+  "continuous": true,                                   // notebook: pages join without a gap
+  "layout": "canvas", "template": "ruled", "spacing": 52.5,   // infinite canvas: free-form tiles + the page style new tiles get
+  "pages": [ { "tag": "Page[0-0]", "w": 2100, "h": 2100, "template": "ruled", "spacing": 52.5 } ] }
+```
+Page sizes are in the same units as the tile (A4 = 1485 x 2100, a tile is 2100). `spacing` is the ruling pitch; when absent the
+page uses StarNote's own 86.81. The offered spacings (42, 52.5, 70) divide 2100, so ruling lines up across tile seams.

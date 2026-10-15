@@ -1,6 +1,6 @@
 import type { StarNoteDocument, ParsedTile, ParsedStroke } from "../model/note-loader";
 import { interpolateStrokePoints, generateRibbonGeometry } from "../model/stroke-interpolator";
-import { TEMPLATE_SPACING } from "../model/pages";
+import { spacingOf } from "../model/pages";
 
 /**
  * Annotated-PDF export: one PDF page per note page. The page background (a PDF page image or ruled paper) is drawn first,
@@ -42,7 +42,12 @@ async function deflate(data: Uint8Array): Promise<Uint8Array | null> {
 
 /** Pages worth exporting, in reading order. A note with nothing on it exports one blank page. */
 function selectPages(doc: StarNoteDocument): ParsedTile[] {
-  if (doc.layout === "stack") return [...doc.tiles.values()]; // a notebook keeps its blank pages, in page order
+  if (doc.layout === "stack") {
+    const all = [...doc.tiles.values()]; // pages keep their blank ones, in page order
+    if (!doc.continuous) return all;
+    while (all.length > 1 && !all[all.length - 1].strokes.length && !all[all.length - 1].textBoxes?.length) all.pop(); // a notebook's empty tail (it grows ahead of you) is not a page
+    return all;
+  }
   const used = [...doc.tiles.values()].filter((t) => t.strokes.length || t.textBoxes?.length || t.backgroundImage);
   used.sort((a, b) => (a.pageRect ?? a.rect).top - (b.pageRect ?? b.rect).top || (a.pageRect ?? a.rect).left - (b.pageRect ?? b.rect).left);
   if (used.length) return used;
@@ -50,18 +55,18 @@ function selectPages(doc: StarNoteDocument): ParsedTile[] {
 }
 
 /** PDF operators for a page template: ruled lines, grid, or dots (dots are zero-length dashes with round caps). */
-function templateOps(kind: string, pr: { left: number; top: number; right: number; bottom: number }, k: number, H: number): string {
+function templateOps(kind: string, pr: { left: number; top: number; right: number; bottom: number }, k: number, H: number, spacing: number, seamless: boolean): string {
   if (kind === "blank") return "";
-  const step = TEMPLATE_SPACING * k, w = (pr.right - pr.left) * k, h = (pr.bottom - pr.top) * k;
+  const step = spacing * k, y0 = seamless ? 0 : step, w = (pr.right - pr.left) * k, h = (pr.bottom - pr.top) * k;
   let ops = "";
   if (kind === "dots") {
     ops += `0.8 0.84 0.88 RG 1 J ${num(3.2 * k * 1.6)} w [0 ${num(step)}] ${num(0)} d\n`;
-    for (let y = step; y < h - step / 2; y += step) ops += `${num(step)} ${num(H - y)} m ${num(w - step / 2)} ${num(H - y)} l S\n`;
+    for (let y = y0; y < h - step / 2; y += step) ops += `${num(step)} ${num(H - y)} m ${num(w - step / 2)} ${num(H - y)} l S\n`;
     return ops + "[] 0 d 0 J\n";
   }
   ops += "0.89 0.9 0.92 RG 0.5 w\n";
-  for (let y = step; y < h; y += step) ops += `0 ${num(H - y)} m ${num(w)} ${num(H - y)} l S\n`;
-  if (kind === "grid") for (let x = step; x < w; x += step) ops += `${num(x)} 0 m ${num(x)} ${num(H)} l S\n`;
+  for (let y = y0; y < h; y += step) ops += `0 ${num(H - y)} m ${num(w)} ${num(H - y)} l S\n`;
+  if (kind === "grid") for (let x = y0; x < w; x += step) ops += `${num(x)} 0 m ${num(x)} ${num(H)} l S\n`;
   return ops;
 }
 
@@ -155,7 +160,7 @@ export async function exportAnnotatedPdf(doc: StarNoteDocument, title: string, o
     if (images[i]) {
       ops += `q ${num(PAGE_W)} 0 0 ${num(H)} 0 0 cm /Im0 Do Q\n`;
     } else {
-      ops += `1 1 1 rg 0 0 ${num(PAGE_W)} ${num(H)} re f\n${templateOps(tile.template ?? "ruled", pr, k, H)}`;
+      ops += `1 1 1 rg 0 0 ${num(PAGE_W)} ${num(H)} re f\n${templateOps(tile.template ?? "ruled", pr, k, H, spacingOf(tile), !!doc.continuous)}`;
     }
     for (const s of tile.strokes) ops += strokePath(s, (x) => toX(x), (y) => toY(y), alphas);
     for (const tb of tile.textBoxes ?? []) {

@@ -10,7 +10,7 @@ import pkg from "../../package.json";
 import { loadStarNoteArchive, StarNoteDocument } from "../model/note-loader";
 import { dropShapeRecords, exportCanvasAsSvg, exportStarNoteArchive } from "../model/note-serializer";
 import { parseStarNotePointsBinary } from "../model/stroke-interpolator";
-import { PAPERS, TEMPLATES, newPageTile, nextPageTag, pageFormat, relayout, sizeOfPage, PageTemplate } from "../model/pages";
+import { PAPERS, TEMPLATES, SPACINGS, NOTEBOOK_PAGE, newCanvasTile, newPageTile, nextPageTag, pageFormat, relayout, sizeOfPage, PageTemplate } from "../model/pages";
 import { exportAnnotatedPdf } from "../render/pdf-export";
 
 const HELP = `rea-starnote ${pkg.version}: work with StarNote (.note) files from the command line
@@ -22,8 +22,9 @@ Commands:
   text <file.note>        print every text box (LaTeX math is shown as its $$source$$)             [--json]
   validate <file.note>    check the archive: ZIP, point streams, shape records, page file. Exit 1 on problems
   export <file.note>      convert:  --format svg | pdf | json   [-o <out>]   (-o - writes svg/json to stdout)
-  new -o <file.note>      create a note: [--title T] [--paper a4|a5|a6|b5|letter|slide|square] [--landscape]
-                          [--template blank|ruled|grid|dots] [--pages N]
+  new -o <file.note>      create a note: [--kind pages|notebook|infinite] [--title T]
+                          [--paper a4|a5|a6|b5|letter|tablet|slide|square] [--landscape]
+                          [--template blank|ruled|grid|dots] [--spacing narrow|medium|wide] [--pages N]
 
 Options:
   -h, --help              show this help          -v, --version   show the version
@@ -42,6 +43,8 @@ async function load(file: string | undefined): Promise<StarNoteDocument> {
   return loadStarNoteArchive(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
 }
 
+const layoutName = (doc: StarNoteDocument) => (doc.infinite ? "infinite canvas" : doc.continuous ? "notebook" : doc.layout === "stack" ? "pages" : "free-form canvas");
+
 const pagesOf = (doc: StarNoteDocument) =>
   [...doc.tiles.values()].map((t, i) => ({
     page: i + 1,
@@ -59,7 +62,7 @@ async function cmdInfo(file: string | undefined, json: boolean) {
   const info = {
     title: doc.title,
     id: doc.uuid,
-    layout: doc.layout === "stack" ? "pages" : "free-form canvas",
+    layout: layoutName(doc),
     pages: pages.length,
     strokes: pages.reduce((n, p) => n + p.strokes, 0),
     textBoxes: pages.reduce((n, p) => n + p.textBoxes, 0),
@@ -121,7 +124,7 @@ async function cmdExport(file: string | undefined, format: string | undefined, o
   let data: string | Uint8Array;
   if (fmt === "svg") data = exportCanvasAsSvg(doc, [], { smoothLevel: 0.2, pressureSensitivity: 0.375 });
   else if (fmt === "pdf") data = await exportAnnotatedPdf(doc, doc.title);
-  else data = JSON.stringify({ title: doc.title, id: doc.uuid, layout: doc.layout === "stack" ? "pages" : "canvas", pages: [...doc.tiles.values()].map((t, i) => ({ page: i + 1, tag: t.pageTag, ...sizeOfPage(t), template: t.template ?? "ruled", strokes: t.strokes.map((s) => ({ color: s.color, width: s.width, alpha: s.alpha ?? 1, points: s.points.map((p) => [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100, p.pressure]) })), textBoxes: (t.textBoxes ?? []).map((b) => ({ text: b.text, color: b.color, fontSize: b.fontSize, rect: b.rect })) })) }, null, 2);
+  else data = JSON.stringify({ title: doc.title, id: doc.uuid, layout: layoutName(doc), pages: [...doc.tiles.values()].map((t, i) => ({ page: i + 1, tag: t.pageTag, ...sizeOfPage(t), template: t.template ?? "ruled", strokes: t.strokes.map((s) => ({ color: s.color, width: s.width, alpha: s.alpha ?? 1, points: s.points.map((p) => [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100, p.pressure]) })), textBoxes: (t.textBoxes ?? []).map((b) => ({ text: b.text, color: b.color, fontSize: b.fontSize, rect: b.rect })) })) }, null, 2);
   if (target === "-") {
     if (typeof data !== "string") throw new UsageError("a PDF can't go to stdout: give -o <file>");
     return out(data);
@@ -130,19 +133,31 @@ async function cmdExport(file: string | undefined, format: string | undefined, o
   warn(`wrote ${target}`);
 }
 
-async function cmdNew(values: { output?: string; title?: string; paper?: string; landscape?: boolean; template?: string; pages?: string }) {
+async function cmdNew(values: { output?: string; title?: string; kind?: string; paper?: string; landscape?: boolean; template?: string; spacing?: string; pages?: string }) {
   if (!values.output) throw new UsageError("new needs -o <file.note>");
   const paper = String(values.paper ?? "a4");
   if (!PAPERS.some((p) => p.id === paper)) throw new UsageError(`unknown paper "${paper}" (${PAPERS.map((p) => p.id).join(", ")})`);
   const template = String(values.template ?? "ruled") as PageTemplate;
   if (!TEMPLATES.some((t) => t.id === template)) throw new UsageError(`unknown template "${template}" (${TEMPLATES.map((t) => t.id).join(", ")})`);
+  const kind = String(values.kind ?? "pages");
+  if (!["pages", "notebook", "infinite"].includes(kind)) throw new UsageError(`unknown kind "${kind}" (pages, notebook, infinite)`);
+  const sp = SPACINGS.find((x) => x.id === String(values.spacing ?? "medium"));
+  if (!sp) throw new UsageError(`unknown spacing "${values.spacing}" (${SPACINGS.map((x) => x.id).join(", ")})`);
   const count = Number(values.pages ?? 1);
   if (!Number.isInteger(count) || count < 1 || count > 500) throw new UsageError("--pages must be a whole number from 1 to 500");
   const doc: StarNoteDocument = { uuid: crypto.randomUUID(), title: String(values.title ?? basename(values.output, extname(values.output))), tiles: new Map(), layout: "stack" };
-  for (let i = 0; i < count; i++) { const tag = nextPageTag(doc); doc.tiles.set(tag, newPageTile(tag, pageFormat(paper, !!values.landscape, template))); }
-  relayout(doc);
+  if (kind === "infinite") {
+    delete doc.layout;
+    doc.infinite = { template, spacing: sp.v };
+    doc.tiles.set("Page[0-0]", newCanvasTile("Page[0-0]", template, sp.v));
+  } else {
+    if (kind === "notebook") doc.continuous = true;
+    const f = kind === "notebook" ? { ...pageFormat(paper, false, template, sp.v), w: NOTEBOOK_PAGE, h: NOTEBOOK_PAGE } : pageFormat(paper, !!values.landscape, template, sp.v);
+    for (let i = 0; i < count; i++) { const tag = nextPageTag(doc); doc.tiles.set(tag, newPageTile(tag, f)); }
+    relayout(doc);
+  }
   await writeFile(values.output, await exportStarNoteArchive(doc, []));
-  warn(`wrote ${values.output} (${count} page${count === 1 ? "" : "s"}, ${paper.toUpperCase()}${values.landscape ? " landscape" : ""}, ${template})`);
+  warn(`wrote ${values.output} (${kind === "infinite" ? "infinite canvas" : `${count} ${kind === "notebook" ? "notebook " : ""}page${count === 1 ? "" : "s"}, ${kind === "notebook" ? "wide" : paper.toUpperCase() + (values.landscape ? " landscape" : "")}`}, ${template}, ${sp.id} spacing)`);
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -153,7 +168,7 @@ async function main(argv: string[]): Promise<number> {
       options: {
         help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" }, json: { type: "boolean" },
         format: { type: "string", short: "f" }, output: { type: "string", short: "o" },
-        title: { type: "string" }, paper: { type: "string" }, landscape: { type: "boolean" }, template: { type: "string" }, pages: { type: "string" },
+        title: { type: "string" }, kind: { type: "string" }, spacing: { type: "string" }, paper: { type: "string" }, landscape: { type: "boolean" }, template: { type: "string" }, pages: { type: "string" },
       },
     });
     const [command, file] = positionals;

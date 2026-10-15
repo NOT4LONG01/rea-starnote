@@ -1,7 +1,7 @@
 import { PEN_KINDS, PenType, penById, penFor } from "./model/pens";
 import { SHAPE_KINDS, ShapeKind } from "./model/shapes";
 import { isMathText, latexOf, wrapLatex, renderMath } from "./model/math";
-import { PAPERS, TEMPLATES, DEFAULT_FORMAT, PageFormat, PageTemplate, newPageTile, relayout, pageFormat, paperOf } from "./model/pages";
+import { PAPERS, TEMPLATES, SPACINGS, DEFAULT_FORMAT, DEFAULT_SPACING, NOTEBOOK_PAGE, NoteKind, PageFormat, PageTemplate, newCanvasTile, newPageTile, relayout, pageFormat, paperOf } from "./model/pages";
 import { CanvasRenderer, ViewSnapshot } from "./render/canvas-renderer";
 import { loadStarNoteArchive, StarNoteDocument, ParsedTextBox } from "./model/note-loader";
 import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serializer";
@@ -410,10 +410,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (active) active.view = renderer.snapshot();
   }
 
-  function newNote(format: PageFormat = DEFAULT_FORMAT) {
+  function newNote(format: PageFormat = DEFAULT_FORMAT, kind: NoteKind = "pages") {
     const now = Date.now();
-    const doc: StarNoteDocument = { uuid: crypto.randomUUID(), title: "Untitled note", tiles: new Map([["Page[0-0]", newPageTile("Page[0-0]", format)]]), layout: "stack" };
-    relayout(doc);
+    const doc: StarNoteDocument = { uuid: crypto.randomUUID(), title: "Untitled note", tiles: new Map(), layout: "stack" };
+    if (kind === "infinite") { // free-form tiles that appear wherever you write
+      delete doc.layout;
+      doc.infinite = { template: format.template, spacing: format.spacing ?? DEFAULT_SPACING };
+      doc.tiles.set("Page[0-0]", newCanvasTile("Page[0-0]", doc.infinite.template, doc.infinite.spacing));
+    } else {
+      if (kind === "notebook") doc.continuous = true; // pages join into one endless sheet
+      doc.tiles.set("Page[0-0]", newPageTile("Page[0-0]", kind === "notebook" ? { ...format, w: NOTEBOOK_PAGE, h: NOTEBOOK_PAGE } : format));
+      relayout(doc);
+    }
     const item: LibraryItem = { id: crypto.randomUUID(), title: "Untitled note", kind: "note", created: now, modified: now, trashed: false };
     const s: Session = { item, doc, view: null, isNew: true, saving: null, inFlight: 0 };
     sessions.push(s);
@@ -586,12 +594,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     const { index, total } = renderer.pageInfo();
     const label = `${index + 1} / ${total}`;
     if (label !== lastPageLabel) { lastPageLabel = label; $("page-label").textContent = label; resetFit(); }
+    $("pagenav").classList.toggle("hidden", renderer.isInfinite());
     $("add-page-pill").classList.toggle("hidden", !(renderer.isStack() && renderer.endOfNoteVisible() && inEditor()));
   };
 
   // ---------- editor wiring
   $("btn-back").addEventListener("click", leaveToLibrary);
-  $("btn-new-tab").addEventListener("click", () => newNote(lastFormat())); // the "+" tab: a new note in the last-used format, no dialog
+  $("btn-new-tab").addEventListener("click", () => newNote(lastFormat(), lastKind())); // the "+" tab: a new note in the last-used format, no dialog
   $("save-state").addEventListener("click", async () => { if (active) { await saveSession(active); showToast("Saved", "success"); } });
   $("tool-undo").addEventListener("click", () => renderer.undo());
   $("tool-redo").addEventListener("click", () => renderer.redo());
@@ -612,7 +621,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const TOOLS: Tool[] = ["pen", "eraser", "lasso", "shape", "text", "pan"];
 
   // ----- colors: pen and highlighter each keep their own current color and their own 4 quick colors, in the order the user set
-  const penColors = { ink: pref.get("sn.ink", "#b33333"), hl: pref.get("sn.hl", penById("highlighter").color!) };
+  const penColors = { ink: pref.get("sn.ink", "#000000"), hl: pref.get("sn.hl", penById("highlighter").color!) };
   type Kind = "ink" | "hl";
   const QUICK_COLORS = 4;
   const DEFAULT_COLORS: Record<Kind, string[]> = { ink: ["#000000", "#b33333", "#2f4fd0", "#0b8a5f"], hl: ["#f5d742", "#7ee081", "#ff9ecb", "#7cc4ff"] };
@@ -873,11 +882,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     try { const f = JSON.parse(pref.get("sn.format", "")); if (f && f.w && f.h && TEMPLATES.some((t) => t.id === f.template)) return f; } catch { /* default */ }
     return DEFAULT_FORMAT;
   };
-  /** Shows the paper / orientation / style chooser. Resolves with the chosen format, or null when cancelled. */
-  function askPageFormat(o: { title: string; ok: string; initial: PageFormat; scope?: boolean; sizeLocked?: boolean }): Promise<{ format: PageFormat; all: boolean } | null> {
+  const lastKind = (): NoteKind => { const k = pref.get("sn.kind", "pages"); return k === "notebook" || k === "infinite" ? k : "pages"; };
+  const KINDS: { id: NoteKind; label: string; note: string }[] = [
+    { id: "pages", label: "Pages", note: "Finite pages (A4, A5, ...), one under the other." },
+    { id: "notebook", label: "Notebook", note: "One endless sheet for a long session: pages join without a seam and a new one appears as you scroll." },
+    { id: "infinite", label: "Infinite", note: "No page edges: write anywhere and pan as far as you like." },
+  ];
+  /** Shows the type / paper / orientation / style / spacing chooser. Resolves with the chosen format, or null when cancelled. */
+  function askPageFormat(o: { title: string; ok: string; initial: PageFormat; scope?: boolean; sizeLocked?: boolean; kind?: NoteKind }): Promise<{ format: PageFormat; all: boolean; kind: NoteKind } | null> {
     return new Promise((resolve) => {
       const start = paperOf(o.initial.w, o.initial.h);
-      const st = { paper: start?.paper ?? "a4", orient: (start?.landscape ?? o.initial.w > o.initial.h) ? "landscape" : "portrait", template: o.initial.template as string, scope: "this" };
+      const spacingId = SPACINGS.find((x) => Math.abs(x.v - (o.initial.spacing ?? NaN)) < 0.01)?.id ?? (o.kind ? "medium" : "keep"); // a new note starts at Medium; an older page's own spacing stays unless one is picked
+      const st = { kind: (o.kind ?? "pages") as string, paper: start?.paper ?? "a4", orient: (start?.landscape ?? o.initial.w > o.initial.h) ? "landscape" : "portrait", template: o.initial.template as string, spacing: spacingId, scope: "this" };
+      $("pm-kind-row").classList.toggle("hidden", !o.kind);
       $("pm-title").textContent = o.title;
       $("pm-ok").textContent = o.ok;
       $("pm-scope-row").classList.toggle("hidden", !o.scope);
@@ -886,20 +903,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       const choosers: [string, { id: string; label: string }[], keyof typeof st][] = [
         ["pm-paper", PAPERS, "paper"], ["pm-orient", [{ id: "portrait", label: "Portrait" }, { id: "landscape", label: "Landscape" }], "orient"],
         ["pm-template", TEMPLATES, "template"], ["pm-scope", [{ id: "this", label: "This page" }, { id: "all", label: "All pages" }], "scope"],
+        ["pm-kind", KINDS, "kind"], ["pm-spacing", SPACINGS, "spacing"],
       ];
-      const fmt = (): PageFormat => (o.sizeLocked ? { ...o.initial, template: st.template as PageTemplate } : pageFormat(st.paper, st.orient === "landscape", st.template as PageTemplate));
+      const spacing = () => SPACINGS.find((x) => x.id === st.spacing)?.v ?? o.initial.spacing ?? DEFAULT_SPACING;
+      const fmt = (): PageFormat => (o.sizeLocked ? { ...o.initial, template: st.template as PageTemplate, spacing: spacing() } : pageFormat(st.paper, st.orient === "landscape", st.template as PageTemplate, spacing()));
       const paint = () => {
         for (const [id, , key] of choosers) {
           $(id).querySelectorAll<HTMLButtonElement>("button").forEach((b) => { b.classList.toggle("active", b.dataset.v === st[key]); b.disabled = !!o.sizeLocked && key !== "template" && key !== "scope"; });
         }
-        const f = fmt(), pv = $("pm-preview"), line = "#dfe4ea";
-        pv.style.aspectRatio = `${f.w} / ${f.h}`;
-        pv.style.width = `${f.w >= f.h ? 150 : Math.round(150 * f.w / f.h)}px`;
-        pv.style.backgroundImage = f.template === "ruled" ? `repeating-linear-gradient(#fff 0 14px, ${line} 14px 15px)`
+        const f = fmt(), pv = $("pm-preview"), line = "#dfe4ea", paged = st.kind === "pages";
+        $("pm-size-rows").classList.toggle("hidden", !paged);
+        $("pm-spacing-row").classList.toggle("hidden", st.template === "blank");
+        $("pm-kind-note").textContent = KINDS.find((k) => k.id === st.kind)?.note ?? "";
+        pv.style.aspectRatio = st.kind === "notebook" ? "2100 / 3400" : paged ? `${f.w} / ${f.h}` : "1 / 1";
+        pv.style.width = st.kind === "notebook" ? "110px" : `${f.w >= f.h || !paged ? 150 : Math.round(150 * f.w / f.h)}px`;
+        const cell = Math.max(8, Math.round((f.spacing ?? DEFAULT_SPACING) / 3.5)); // preview scale: 150px for a 2100-unit tile is 1/14, doubled so the lines stay visible
+        pv.style.backgroundImage = f.template === "ruled" ? `repeating-linear-gradient(#fff 0 ${cell - 1}px, ${line} ${cell - 1}px ${cell}px)`
           : f.template === "grid" ? `linear-gradient(${line} 1px, transparent 1px), linear-gradient(90deg, ${line} 1px, transparent 1px)`
           : f.template === "dots" ? "radial-gradient(#b8c0cc 1.2px, transparent 1.6px)" : "none";
-        pv.style.backgroundSize = f.template === "ruled" ? "auto" : "15px 15px";
-        $("pm-size").textContent = o.sizeLocked ? "PDF page" : `${PAPERS.find((x) => x.id === st.paper)?.label} · ${st.orient}`;
+        pv.style.backgroundSize = f.template === "ruled" ? "auto" : `${cell}px ${cell}px`;
+        $("pm-size").textContent = o.sizeLocked ? "Fixed size" : paged ? `${PAPERS.find((x) => x.id === st.paper)?.label} · ${st.orient}` : KINDS.find((k) => k.id === st.kind)?.label ?? "";
       };
       for (const [id, items, key] of choosers) {
         const box = $(id);
@@ -911,12 +934,12 @@ document.addEventListener("DOMContentLoaded", async () => {
           box.appendChild(b);
         }
       }
-      const done = (v: { format: PageFormat; all: boolean } | null) => {
+      const done = (v: { format: PageFormat; all: boolean; kind: NoteKind } | null) => {
         pmEl.classList.add("hidden");
         $("pm-ok").onclick = $("pm-cancel").onclick = $("pm-close").onclick = null;
         resolve(v);
       };
-      $("pm-ok").onclick = () => done({ format: fmt(), all: st.scope === "all" });
+      $("pm-ok").onclick = () => done({ format: fmt(), all: st.scope === "all", kind: st.kind as NoteKind });
       $("pm-cancel").onclick = $("pm-close").onclick = () => done(null);
       paint();
       pmEl.classList.remove("hidden");
@@ -924,10 +947,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function createNote() {
-    const r = await askPageFormat({ title: "New note", ok: "Create", initial: lastFormat() });
+    const r = await askPageFormat({ title: "New note", ok: "Create", initial: lastFormat(), kind: lastKind() });
     if (!r) return;
     pref.set("sn.format", JSON.stringify(r.format));
-    newNote(r.format);
+    pref.set("sn.kind", r.kind);
+    newNote(r.format, r.kind);
   }
 
   // ---------- pages: add / delete / move / format
@@ -948,10 +972,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       root.appendChild(popItem("Page format…", "sliders", async () => {
         closePopover();
         const cur = renderer.pageFormatAt(i)!;
-        const r = await askPageFormat({ title: "Page format", ok: "Apply", initial: cur, scope: true, sizeLocked: renderer.hasBackgroundAt(i) });
+        const r = await askPageFormat({ title: "Page format", ok: "Apply", initial: cur, scope: true, sizeLocked: renderer.hasBackgroundAt(i) || renderer.isContinuous() });
         if (!r) return;
         const idx = r.all ? [...Array(total).keys()] : [i];
-        renderer.setPageFormat(idx, { w: r.format.w, h: r.format.h, template: r.format.template });
+        renderer.setPageFormat(idx, { w: r.format.w, h: r.format.h, template: r.format.template, spacing: r.format.spacing });
         pref.set("sn.format", JSON.stringify(r.format));
       }));
       if (i > 0) root.appendChild(popItem("Move page up", "chevron", () => { closePopover(); renderer.movePage(i, -1); }));

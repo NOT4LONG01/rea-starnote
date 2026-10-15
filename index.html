@@ -252,17 +252,28 @@
           <div class="modal-body pm-body">
             <div class="pm-preview-wrap"><div id="pm-preview" class="pm-preview"></div><div id="pm-size" class="pm-size"></div></div>
             <div class="pm-form">
-              <div class="pm-label">Paper</div>
-              <div id="pm-paper" class="pm-chips"></div>
-              <div class="pm-label">Orientation</div>
-              <div id="pm-orient" class="pm-chips"><button data-v="portrait">Portrait</button><button data-v="landscape">Landscape</button></div>
+              <div id="pm-kind-row" class="hidden">
+                <div class="pm-label">Type</div>
+                <div id="pm-kind" class="pm-chips"></div>
+                <p id="pm-kind-note" class="pm-note"></p>
+              </div>
+              <div id="pm-size-rows">
+                <div class="pm-label">Paper</div>
+                <div id="pm-paper" class="pm-chips"></div>
+                <div class="pm-label">Orientation</div>
+                <div id="pm-orient" class="pm-chips"><button data-v="portrait">Portrait</button><button data-v="landscape">Landscape</button></div>
+              </div>
               <div class="pm-label">Page style</div>
               <div id="pm-template" class="pm-chips"></div>
+              <div id="pm-spacing-row">
+                <div class="pm-label">Line spacing</div>
+                <div id="pm-spacing" class="pm-chips"></div>
+              </div>
               <div id="pm-scope-row" class="hidden">
                 <div class="pm-label">Apply to</div>
                 <div id="pm-scope" class="pm-chips"><button data-v="this">This page</button><button data-v="all">All pages</button></div>
               </div>
-              <p id="pm-note" class="pm-note hidden">A page with a PDF background keeps its size; only the style can change.</p>
+              <p id="pm-note" class="pm-note hidden">This page keeps its size (a PDF page, or a notebook page); only the style can change.</p>
             </div>
           </div>
           <div class="pm-actions">
