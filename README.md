@@ -20,7 +20,7 @@ Node 22 (see `.nvmrc`). Desktop and Android builds: [docs/development.md](docs/d
 src/             the app (TypeScript): model/ render/ data/ integrations/ and main.ts (the UI)
 src-tauri/       desktop + Android shell (Rust, Tauri v2); gen/android is the Android project
 public/          static files: service worker, web manifest, sample .note and PDF
-tests/           tests that run the real modules (npm test)
+test/           tests that run the real modules (npm test)
 docs/            architecture, development guide, .note format spec, Android build
 qa/              retest runbooks for the Windows and Android testers
 scripts/         helper scripts (Waydroid emulator, Linux build dependencies)

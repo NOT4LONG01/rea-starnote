@@ -6,10 +6,10 @@ and send a summary to `playground-00`.
 
 ## 0. Setup
 `npm ci` (the new MathJax dependency needs it), then run all of:
-`node tests/sync.test.mjs`,
-`node tests/zotero.test.mjs`, `node tests/pdf-export.test.mjs`, `node tests/desktop-oauth.test.mjs`, `node tests/erase-saved.test.mjs`,
-`node tests/pages.test.mjs`, then `npm run build`. Expected: every test passes (counts: 32, 18, 10, 16, 8, 6, in this order).
-`tests/pdf-export.test.mjs` needs `pdfinfo`, `pdftoppm`, `pdftotext` and Python with PIL (Ghostscript is optional): if they are
+`node test/sync.test.mjs`,
+`node test/zotero.test.mjs`, `node test/pdf-export.test.mjs`, `node test/desktop-oauth.test.mjs`, `node test/erase-saved.test.mjs`,
+`node test/pages.test.mjs`, then `npm run build`. Expected: every test passes (counts: 32, 18, 10, 16, 8, 6, in this order).
+`test/pdf-export.test.mjs` needs `pdfinfo`, `pdftoppm`, `pdftotext` and Python with PIL (Ghostscript is optional): if they are
 missing, report BLOCKED for that file only. Then `npm run tauri build` for the exe if the Rust toolchain is there.
 
 ## 1. Checks (PASS / FAIL / BLOCKED / NOT RUN + one line of evidence each)

@@ -10,15 +10,15 @@
 |---|---|
 | `npm run dev` | dev server at http://localhost:1420 (the Google OAuth client is registered for exactly that origin) |
 | `npm run typecheck` | `tsc --noEmit` (strict, no unused locals/params) |
-| `npm test` | every `tests/*.test.mjs`; `node tests/run-all.mjs sync` runs one |
+| `npm test` | every `test/*.test.mjs`; `node test/run-all.mjs sync` runs one |
 | `npm run build` | typecheck + production bundle in `dist/` |
 | `npm run check` | all of the above; what CI runs |
 | `npm run tauri dev` / `npm run tauri build` | desktop app (`-- --no-bundle` for just the binary) |
 
-`tests/pdf-export.test.mjs` needs `pdfinfo`, `pdftoppm`, `pdftotext` (poppler) and Python with Pillow; Ghostscript is optional.
+`test/pdf-export.test.mjs` needs `pdfinfo`, `pdftoppm`, `pdftotext` (poppler) and Python with Pillow; Ghostscript is optional.
 
 ## Adding a test
-Copy the header of `tests/pages.test.mjs`: bundle the modules you need with esbuild, then use `assert`. Keep tests on
+Copy the header of `test/pages.test.mjs`: bundle the modules you need with esbuild, then use `assert`. Keep tests on
 the real modules; use the sample note in `public/samples/test.note` for format questions.
 
 ## The base settings in this repo

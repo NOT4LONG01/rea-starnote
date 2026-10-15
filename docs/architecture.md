@@ -47,5 +47,5 @@ Dependencies point one way: `main.ts` -> `render`, `data`, `integrations` -> `mo
   (`@media` block at the end of `src/styles.css`, `compact` in `main.ts`).
 
 ## Tests
-`tests/*.test.mjs` bundle the real source modules with esbuild and run them against fakes (a fake Drive and Zotero server,
+`test/*.test.mjs` bundle the real source modules with esbuild and run them against fakes (a fake Drive and Zotero server,
 the real sample `.note`, poppler/Pillow for PDF output). There are no mocks of the format code.

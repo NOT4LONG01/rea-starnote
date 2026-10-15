@@ -1,4 +1,4 @@
-// Runs every tests/*.test.mjs one after another and exits non-zero if any fails. Usage: npm test  (or: node tests/run-all.mjs [name])
+// Runs every test/*.test.mjs one after another and exits non-zero if any fails. Usage: npm test  (or: node test/run-all.mjs [name])
 import { readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
