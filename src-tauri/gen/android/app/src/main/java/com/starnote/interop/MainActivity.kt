@@ -3,10 +3,12 @@ package com.starnote.interop
 import android.content.Intent
 import android.os.Bundle
 import android.util.Base64
+import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -56,5 +58,11 @@ class MainActivity : TauriActivity() {
     val controller = WindowInsetsControllerCompat(window, window.decorView)
     controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     controller.hide(WindowInsetsCompat.Type.systemBars())
+    // adjustResize does nothing once the app draws edge to edge, so the soft keyboard's height becomes bottom padding:
+    // the web view shrinks and the page and the Math panel reflow above the keyboard instead of hiding behind it.
+    ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
+      findViewById<View>(android.R.id.content).setPadding(0, 0, 0, insets.getInsets(WindowInsetsCompat.Type.ime()).bottom)
+      insets
+    }
   }
 }
