@@ -891,7 +891,7 @@ export class CanvasRenderer {
       const { track, thumb } = this.bars[a];
       const g = this.axis(a);
       const frac = g.view / g.total;
-      track.style.display = frac >= 0.999 ? "none" : "block"; // nothing to scroll
+      track.style.display = frac >= 0.999 || this.doc?.infinite ? "none" : "block"; // nothing to scroll (and no meaningful extent on an infinite canvas)
       const pos = ((g.v0 - g.min) / g.total) * 100;
       if (a === "x") { thumb.style.left = `${pos}%`; thumb.style.width = `${Math.max(frac * 100, 4)}%`; }
       else { thumb.style.top = `${pos}%`; thumb.style.height = `${Math.max(frac * 100, 4)}%`; }
