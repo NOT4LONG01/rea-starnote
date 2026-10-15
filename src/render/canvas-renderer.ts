@@ -81,6 +81,8 @@ export class CanvasRenderer {
   private strokeCache = new WeakMap<ParsedStroke, { pts: RawStrokePoint[]; smooth: number; viewerSens: number; path: Path2D | null; l: number; t: number; r: number; b: number }>();
   private view = { l: 0, t: 0, r: 0, b: 0 }; // visible area in world coordinates, for culling
   private predicted: RawStrokePoint[] = [];  // where the pen is about to be (drawn, never saved)
+  private lastSampleTime = -1;              // timestamp of the newest pen sample taken, so a sample is never taken twice
+  private lastLiveDraw = 0;
   private sceneZoom = 0; private scenePanX = 0; private scenePanY = 0; // view the cached scene was painted for
   private notifyTimer = 0;      // onRender is throttled: it drives DOM (page label, buttons), the canvas must not wait for it
   private zoomPreview = false;     // during a zoom gesture the painted bitmap is scaled instead of repainted
@@ -510,6 +512,20 @@ export class CanvasRenderer {
       }
     });
 
+    // The pen reports before the screen is ready for the next frame (pointerrawupdate): put the new samples on the overlay
+    // at once instead of waiting for the animation frame, which takes about a frame of latency off the ink following the tip.
+    this.canvas.addEventListener("pointerrawupdate", (ev: Event) => {
+      const e = ev as PointerEvent;
+      if (!this.isDrawing || e.pointerId !== this.drawingPointerId || e.pointerType !== "pen") return;
+      const batch = e.getCoalescedEvents?.();
+      for (const c of batch && batch.length ? batch : [e]) this.addPointFromEvent(c);
+      this.predicted = []; // stale: pointermove looks ahead again once per frame
+      const now = performance.now();
+      if (now - this.lastLiveDraw < 3) return; // a very fast pen: the next frame picks the rest up
+      this.lastLiveDraw = now;
+      this.drawOverlay();
+    });
+
     const stopAction = (e: PointerEvent) => {
       this.activePointers.delete(e.pointerId);
 
@@ -578,6 +594,7 @@ export class CanvasRenderer {
     this.strokeStartTime = e.timeStamp;
     this.currentStrokePoints = [];
     this.predicted = [];
+    this.lastSampleTime = -1;
     this.addPointFromEvent(e);
   }
 
@@ -1278,6 +1295,8 @@ export class CanvasRenderer {
   }
 
   private addPointFromEvent(e: PointerEvent) {
+    if (e.timeStamp <= this.lastSampleTime) return; // already taken (pointerrawupdate and pointermove both report it)
+    this.lastSampleTime = e.timeStamp;
     const pt = this.pointFrom(e);
     // Ink only lands on the note: drop points outside every page tile.
     // ponytail: leaving and re-entering mid-stroke joins the two points with a straight segment.
