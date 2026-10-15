@@ -626,7 +626,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     if (!list.children.length) list.appendChild(el("div", "empty-state", "No pages yet."));
     const newPage = el("button", "btn page-add", "+ Page");
-    newPage.addEventListener("click", () => newNote(lastFormat(), lastKind())); // straight in, in the last format, like OneNote
+    newPage.addEventListener("click", () => newNote(lastFormat(), "pages")); // straight in, in the last page format, like OneNote; a page is always a Pages note
     box.append(list, newPage);
     hydrateIcons(box);
   }
@@ -681,7 +681,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     const add = el("button", "btn btn-sm rail-add", "+ Page");
     add.title = `New page in ${parent.title}`;
-    add.addEventListener("click", () => { ui.folder = parent.id; newNote(lastFormat(), lastKind()); });
+    add.addEventListener("click", () => { ui.folder = parent.id; newNote(lastFormat(), "pages"); });
     rail.append(head, list, add);
     hydrateIcons(rail);
   }
@@ -1357,7 +1357,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const currentPage = () => renderer.pageInfo().index;
   function addNewPage(after: number) {
     const ref = renderer.pageFormatAt(after) ?? lastFormat();
-    renderer.addPage({ w: ref.w, h: ref.h, template: ref.template }, after);
+    renderer.addPage({ w: ref.w, h: ref.h, template: ref.template, spacing: ref.spacing }, after); // the new page looks like its neighbour, line spacing included
   }
   $("add-page-pill").addEventListener("click", () => addNewPage(renderer.pageInfo().total - 1));
   $("page-here").addEventListener("click", (e) => {
