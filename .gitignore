@@ -32,3 +32,6 @@ chrome-*/
 
 # command-line bundle
 dist-cli/
+
+# QA reports and screenshots stay local
+qa/reports/
