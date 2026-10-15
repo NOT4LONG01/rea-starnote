@@ -1,7 +1,7 @@
 # rea-starnote: instructions for Claude
 
 Viewer/editor/sync client for StarNote `.note` files. TypeScript + HTML canvas; Tauri v2 desktop (Windows, Linux) and
-Tauri Android; a Node command line. Version 0.x (not ready for 1.0). Docs index: `docs/README.md`.
+Tauri Android; a Node command line. Version 1.0.0-beta.N on `release/1.0`; `main` is the next version. Docs index: `docs/README.md`.
 
 ## What is the product
 The **Android, Windows and Linux apps** (Google Drive + Zotero connectors) and the **CLI**. The localhost web version
@@ -20,7 +20,7 @@ Dependencies point one way: main.ts -> render/data/integrations -> model; cli ->
 
 ## Rules
 - **Never push to GitHub** (`origin` = NOT4LONG01/rea-starnote, private) until the owner says; commit locally. Branch per topic
-  (`feat/`, `fix/`, `docs/`), `git merge --no-ff` into `main` after `npm run check` (docs/branching.md). SemVer 0.x.
+  (`feat/` from main, `fix/` from release/1.0 then merged into main), `git merge --no-ff` after `npm run check`; never merge main into release/1.0 (docs/branching.md). SemVer; betas need an explicit Android versionCode.
 - **Secrets:** never print `~/.android/starnote-release.pass`; never write client secrets/API keys to files, chat or Drive
   (the user types them into the app); the Windows QA session must never see keys. Drive/Zotero writes need explicit approval.
 - Saving a `.note` stays non-destructive. Whether real StarNote opens our output is still unverified; do not claim it.
@@ -29,8 +29,8 @@ Dependencies point one way: main.ts -> render/data/integrations -> model; cli ->
 - Comments say why; shortcuts are marked `ponytail: <ceiling>, <upgrade path>`. No LICENSE, ESLint or Prettier on purpose.
 
 ## QA bundles (only when the user asks)
-No tags, release branches or version bumps for a QA build: bundle whatever is on `main`, name it by the next N.
-`git archive --format=zip --prefix=rea-starnote/ -o artifacts/rea-starnote-qa-N.zip HEAD`, with `qa/RETEST_N.md` written first.
+A beta bundle is built from `release/1.0` at its tag; an in-between QA bundle may be built from `main` untagged. Name bundles by the next N.
+`git archive --format=zip --prefix=rea-starnote/ -o artifacts/rea-starnote-qa-N.zip <tag or branch>`, with `qa/RETEST_N.md` written first.
 Copy to Yonsei Drive `My Drive/QA` via GVFS (`/run/user/1000/gvfs/google-drive:host=yonsei.ac.kr,user=js.jeong/0AMawZ-Z1xeoLUk9PVA/QA/`),
 verify the sha256 of the new copy, hash-check then `rm` the previous bundle I uploaded (never other Drive files), then message
 the "StarNote Interop Windows QA" session with name, size, SHA-256 and what to test. Latest: qa-12.
