@@ -10,7 +10,7 @@ import pkg from "../../package.json";
 import { loadStarNoteArchive, StarNoteDocument } from "../model/note-loader";
 import { dropShapeRecords, exportCanvasAsSvg, exportStarNoteArchive } from "../model/note-serializer";
 import { parseStarNotePointsBinary } from "../model/stroke-interpolator";
-import { PAPERS, TEMPLATES, SPACINGS, NOTEBOOK_PAGE, newCanvasTile, newPageTile, nextPageTag, pageFormat, relayout, sizeOfPage, PageTemplate } from "../model/pages";
+import { PAPERS, TEMPLATES, SPACINGS, spacingOf, NOTEBOOK_PAGE, newCanvasTile, newPageTile, nextPageTag, pageFormat, relayout, sizeOfPage, PageTemplate } from "../model/pages";
 import { exportAnnotatedPdf } from "../render/pdf-export";
 
 const HELP = `rea-starnote ${pkg.version}: work with StarNote (.note) files from the command line
@@ -52,6 +52,7 @@ const pagesOf = (doc: StarNoteDocument) =>
     width: Math.round(sizeOfPage(t).w),
     height: Math.round(sizeOfPage(t).h),
     template: t.template ?? "ruled",
+    spacing: spacingOf(t),
     strokes: t.strokes.length,
     textBoxes: t.textBoxes?.length ?? 0,
   }));
@@ -137,7 +138,8 @@ async function cmdNew(values: { output?: string; title?: string; kind?: string; 
   if (!values.output) throw new UsageError("new needs -o <file.note>");
   const paper = String(values.paper ?? "a4");
   if (!PAPERS.some((p) => p.id === paper)) throw new UsageError(`unknown paper "${paper}" (${PAPERS.map((p) => p.id).join(", ")})`);
-  const template = String(values.template ?? "ruled") as PageTemplate;
+  const asked = String(values.template ?? "ruled");
+  const template = (({ lined: "ruled", dotted: "dots" } as Record<string, string>)[asked] ?? asked) as PageTemplate; // the app calls them Lined / Dotted
   if (!TEMPLATES.some((t) => t.id === template)) throw new UsageError(`unknown template "${template}" (${TEMPLATES.map((t) => t.id).join(", ")})`);
   const kind = String(values.kind ?? "pages");
   if (!["pages", "notebook", "infinite"].includes(kind)) throw new UsageError(`unknown kind "${kind}" (pages, notebook, infinite)`);

@@ -453,6 +453,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (s.view) renderer.restore(s.view);
     else {
       renderer.setDocument(s.doc);
+      renderer.trimNotebookTail();
       renderer.fit("width");
     }
     resetFit();
@@ -464,6 +465,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function leaveToLibrary() {
     if (active) {
       const s = active;
+      renderer.trimNotebookTail();
       park();
       if (s.isNew && !isDirty(s)) { // a note nobody wrote on is not kept: no card, and no stale tab
         sessions.splice(sessions.indexOf(s), 1);
