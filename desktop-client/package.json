@@ -1,0 +1,25 @@
+{
+  "name": "starnote-desktop-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-http": "~2.8.2",
+    "@tauri-apps/plugin-opener": "~2.7.1",
+    "jszip": "^3.10.1",
+    "mathjax-full": "3.2.2",
+    "pdfjs-dist": "^5.4.530"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.9"
+  }
+}

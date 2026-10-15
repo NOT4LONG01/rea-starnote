@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#262626" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>StarNote Interop</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <input type="file" id="note-file-input" accept=".note,.zip,.pdf,application/pdf" multiple hidden />
+
+      <!-- ===================== LIBRARY ===================== -->
+      <section id="view-library" class="view">
+        <aside id="lib-sidebar" class="lib-sidebar">
+          <div class="side-top">
+            <button id="btn-account" class="avatar" title="Google Drive account">S</button>
+            <span class="spacer"></span>
+            <button id="btn-sidebar-toggle" class="icon-btn" title="Hide sidebar"><i data-icon="sidebar"></i></button>
+          </div>
+
+          <div class="side-search">
+            <i data-icon="search"></i>
+            <input id="lib-search" type="search" placeholder="Search" autocomplete="off" />
+          </div>
+
+          <nav class="side-nav">
+            <button class="side-item active" data-filter="all"><i data-icon="notes"></i><span>All notes</span><em id="count-all">0</em></button>
+            <button class="side-item" data-filter="trash"><i data-icon="trash"></i><span>Trash</span><em id="count-trash">0</em></button>
+            <button class="side-link" id="side-zotero"><i data-icon="book"></i><span>Zotero</span><em id="zotero-dot"></em></button>
+          </nav>
+
+          <div class="side-drive">
+            <div class="side-drive-row">
+              <span id="sidebar-drive-dot" class="status-dot disconnected"></span>
+              <span id="sidebar-drive-text">Disconnected</span>
+            </div>
+            <div id="sync-status" class="sync-status hidden"></div>
+            <div class="side-drive-actions">
+              <button id="btn-sync-now" class="btn btn-sm hidden">Sync now</button>
+              <button id="sidebar-btn-connect-drive" class="btn btn-primary btn-sm">Connect Drive</button>
+            </div>
+          </div>
+        </aside>
+
+        <main class="lib-main" id="lib-main">
+          <header class="lib-head">
+            <button id="btn-sidebar-open" class="icon-btn only-collapsed" title="Show sidebar"><i data-icon="sidebar"></i></button>
+            <h1 id="lib-title">All notes</h1>
+            <div class="lib-tools">
+              <button id="btn-sort" class="icon-btn" title="Sort"><i data-icon="sort"></i></button>
+              <button id="btn-import" class="icon-btn" title="Import .note / .pdf"><i data-icon="upload"></i></button>
+            </div>
+          </header>
+
+          <nav class="lib-tabs" id="lib-tabs">
+            <button class="active" data-kind="all">All</button>
+            <button data-kind="note">Notes</button>
+            <button data-kind="pdf">PDF</button>
+          </nav>
+
+          <div id="lib-grid" class="lib-grid"></div>
+          <p id="lib-drop-hint" class="lib-hint">Drop a <b>.note</b> or <b>.pdf</b> file anywhere to import it.</p>
+        </main>
+      </section>
+
+      <!-- ===================== EDITOR ===================== -->
+      <section id="view-editor" class="view hidden">
+        <div class="tabbar">
+          <div id="tabs" class="tabs"></div>
+          <button id="btn-new-tab" class="icon-btn" title="New note"><i data-icon="plus"></i></button>
+        </div>
+
+        <header class="topbar">
+          <button id="btn-back" class="icon-btn" title="Back to library"><i data-icon="back"></i></button>
+          <span id="save-state" class="save-state" title="Saved to library"><i data-icon="check"></i></span>
+          <div class="topbar-title" id="doc-title">Untitled</div>
+          <span class="spacer"></span>
+          <div class="seg">
+            <button id="btn-zoom-reset" class="icon-btn" title="Fit whole page"><i data-icon="fit"></i></button>
+            <button id="btn-fit-width" class="icon-btn" title="Fit page width"><i data-icon="fitw"></i></button>
+            <button id="btn-fit-height" class="icon-btn" title="Fit page height"><i data-icon="fith"></i></button>
+          </div>
+          <span id="zoom-level" class="zoom-level">100%</span>
+          <button id="btn-pen-settings" class="icon-btn" title="Pen &amp; touch settings"><i data-icon="sliders"></i></button>
+          <button id="btn-more" class="icon-btn" title="More"><i data-icon="more"></i></button>
+        </header>
+
+        <div class="toolrow">
+          <button id="tool-undo" class="icon-btn" title="Undo" disabled><i data-icon="undo"></i></button>
+          <button id="tool-redo" class="icon-btn" title="Redo" disabled><i data-icon="redo"></i></button>
+          <span class="vsep"></span>
+          <button id="tool-pen" class="icon-btn tool active" title="Pen. Tap again to show or hide pen types, colors and sizes"><i data-icon="pen"></i></button>
+          <button id="tool-eraser" class="icon-btn tool" title="Eraser. Tap again for its options, double-tap to clear the page (the pen's eraser end works too)"><i data-icon="eraser"></i></button>
+          <button id="tool-lasso" class="icon-btn tool" title="Select (lasso). The pen's side button does this too"><i data-icon="lasso"></i></button>
+          <button id="tool-shape" class="icon-btn tool" title="Shapes: drag out a line, arrow, rectangle, ellipse…"><i data-icon="shape"></i></button>
+          <button id="tool-text" class="icon-btn tool" title="Text and math"><i data-icon="text"></i></button>
+          <button id="tool-pan" class="icon-btn tool" title="Hand (pan)"><i data-icon="move"></i></button>
+          <span id="sel-actions" class="sel-actions">
+            <button id="sel-copy" class="icon-btn hidden" title="Copy the selection (Ctrl+C)"><i data-icon="copy"></i></button>
+            <button id="sel-delete" class="icon-btn hidden" title="Delete the selection (Delete)"><i data-icon="trash"></i></button>
+            <button id="sel-paste" class="icon-btn hidden" title="Paste drawings (Ctrl+V)"><i data-icon="paste"></i></button>
+          </span>
+        </div>
+
+        <div id="tool-options" class="toolrow tool-options hidden"></div>
+
+        <main class="canvas-container" id="canvas-container">
+          <canvas id="note-canvas"></canvas>
+          <div id="text-editor" class="text-editor hidden" role="dialog" aria-label="Text">
+            <textarea id="te-input" rows="3" placeholder="Type text…" spellcheck="false"></textarea>
+            <div id="te-snips" class="te-snips hidden"></div>
+            <div id="te-preview" class="te-preview hidden"></div>
+            <div class="te-bar">
+              <button id="te-smaller" class="icon-btn" title="Smaller text">A−</button>
+              <button id="te-bigger" class="icon-btn" title="Bigger text">A+</button>
+              <button id="te-bold" class="icon-btn" title="Bold"><b>B</b></button>
+              <button id="te-italic" class="icon-btn" title="Italic"><i>I</i></button>
+              <label class="te-math"><input type="checkbox" id="te-math" /> LaTeX math</label>
+              <span class="spacer"></span>
+              <button id="te-delete" class="btn btn-sm btn-danger hidden">Delete</button>
+              <button id="te-cancel" class="btn btn-sm">Cancel</button>
+              <button id="te-ok" class="btn btn-sm btn-primary">Done</button>
+            </div>
+          </div>
+          <button id="add-page-pill" class="add-page-pill hidden" title="Add a page at the end of the note"><i data-icon="plus"></i><span>Add page</span></button>
+          <div class="pagenav" id="pagenav">
+            <button id="page-prev" title="Previous page"><i data-icon="pprev"></i></button>
+            <button id="page-here" title="Pages: add, delete, move, format"><span id="page-label">1 / 1</span></button>
+            <button id="page-next" title="Next page"><i data-icon="pnext"></i></button>
+          </div>
+        </main>
+      </section>
+
+      <!-- Popover menu (sort / more / card menu / pen settings) -->
+      <div id="popover" class="popover hidden"></div>
+
+      <!-- ===================== GOOGLE DRIVE MODAL ===================== -->
+      <div id="gdrive-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+          <div class="modal-header">
+            <div class="modal-title">
+              <i data-icon="cloud"></i>
+              <h2>Google Drive</h2>
+            </div>
+            <button id="modal-close" class="icon-btn" title="Close"><i data-icon="close"></i></button>
+          </div>
+
+          <div class="modal-tabs">
+            <button class="modal-tab active" data-tab="tab-files">Files</button>
+            <button class="modal-tab" data-tab="tab-account">Account</button>
+            <button class="modal-tab" data-tab="tab-settings">Settings</button>
+          </div>
+
+          <div class="modal-body">
+            <!-- TAB 1: FILES -->
+            <div id="tab-files" class="tab-pane active">
+              <div class="drive-toolbar">
+                <div class="search-box">
+                  <input type="text" id="drive-search-input" placeholder="Search .note and .pdf files in Drive..." />
+                </div>
+                <div class="drive-actions">
+                  <button id="btn-refresh-drive" class="btn" title="Refresh list">Refresh</button>
+                  <button id="btn-drive-save-new" class="btn btn-primary" title="Save the open note as a new file in Google Drive">Save as New</button>
+                  <button id="btn-drive-overwrite" class="btn btn-danger hidden" title="Overwrite the opened file on Google Drive">Overwrite</button>
+                </div>
+              </div>
+
+              <div class="drive-files-container">
+                <div id="drive-loading" class="drive-loading hidden">
+                  <div class="spinner"></div>
+                  <span>Syncing with Google Drive...</span>
+                </div>
+                <div id="drive-files-list" class="drive-files-list"></div>
+              </div>
+            </div>
+
+            <!-- TAB 2: ACCOUNT -->
+            <div id="tab-account" class="tab-pane">
+              <div class="account-card" id="account-card">
+                <div class="account-profile">
+                  <img id="user-avatar" src="https://www.gstatic.com/images/branding/product/2x/drive_48dp.png" alt="Avatar" class="user-avatar" />
+                  <div class="account-info">
+                    <h4 id="user-name">Not Signed In</h4>
+                    <p id="user-email">Connect with Google to import notes from Drive and save copies back.</p>
+                  </div>
+                </div>
+                <div class="account-actions">
+                  <button id="btn-google-signin" class="btn btn-primary">Sign in with Google</button>
+                  <button id="btn-google-signout" class="btn btn-danger hidden">Disconnect Account</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 3: SETTINGS -->
+            <div id="tab-settings" class="tab-pane">
+              <div class="form-group">
+                <label for="cfg-client-id" id="cfg-client-id-label">Google OAuth 2.0 Client ID (Web application):</label>
+                <input type="text" id="cfg-client-id" class="input-text" placeholder="123456789-xxxxxx.apps.googleusercontent.com" />
+                <small class="hint" id="cfg-client-id-hint">Enable the Drive API, add yourself as a Test user, and register the origin below.</small>
+              </div>
+
+              <div class="form-group hidden" id="cfg-secret-group">
+                <label for="cfg-client-secret">Client secret (Desktop app clients only):</label>
+                <input type="password" id="cfg-client-secret" class="input-text" placeholder="GOCSPX-..." autocomplete="off" />
+                <small class="hint">The Client ID above must come from an OAuth client of type <b>Desktop app</b> (Google Cloud → Credentials). Sign-in opens your normal browser; Drive then stays connected without hourly sign-ins. The secret stays on this computer.</small>
+              </div>
+
+              <div class="form-group" id="cfg-origin-group">
+                <label>Authorized JavaScript origin:</label>
+                <div class="copy-field">
+                  <input type="text" id="cfg-redirect-uri" readonly class="input-text readonly" />
+                  <button id="btn-copy-redirect-uri" class="btn">Copy</button>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="cfg-direct-token">Access token (optional):</label>
+                <div class="copy-field">
+                  <input type="password" id="cfg-direct-token" class="input-text" placeholder="Paste a temporary token" />
+                  <button id="btn-apply-token" class="btn">Connect</button>
+                </div>
+              </div>
+
+              <div class="form-group toggle-group">
+                <label for="cfg-autosync">Auto-sync library to Drive</label>
+                <input type="checkbox" id="cfg-autosync" checked />
+                <span class="toggle-desc">Keeps every note in a “StarNote” folder in your Drive, both ways. Nothing is ever deleted by sync.</span>
+              </div>
+
+              <div class="form-group toggle-group">
+                <label for="cfg-mock-mode">Demo cloud mode</label>
+                <input type="checkbox" id="cfg-mock-mode" />
+                <span class="toggle-desc">Browse sample files without Google credentials.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ===================== ZOTERO MODAL ===================== -->
+      <div id="page-modal" class="modal-overlay hidden">
+        <div class="modal-card pm-card">
+          <div class="modal-header">
+            <div class="modal-title"><h2 id="pm-title">New note</h2></div>
+            <button id="pm-close" class="icon-btn" title="Close"><i data-icon="close"></i></button>
+          </div>
+          <div class="modal-body pm-body">
+            <div class="pm-preview-wrap"><div id="pm-preview" class="pm-preview"></div><div id="pm-size" class="pm-size"></div></div>
+            <div class="pm-form">
+              <div class="pm-label">Paper</div>
+              <div id="pm-paper" class="pm-chips"></div>
+              <div class="pm-label">Orientation</div>
+              <div id="pm-orient" class="pm-chips"><button data-v="portrait">Portrait</button><button data-v="landscape">Landscape</button></div>
+              <div class="pm-label">Page style</div>
+              <div id="pm-template" class="pm-chips"></div>
+              <div id="pm-scope-row" class="hidden">
+                <div class="pm-label">Apply to</div>
+                <div id="pm-scope" class="pm-chips"><button data-v="this">This page</button><button data-v="all">All pages</button></div>
+              </div>
+              <p id="pm-note" class="pm-note hidden">A page with a PDF background keeps its size; only the style can change.</p>
+            </div>
+          </div>
+          <div class="pm-actions">
+            <button id="pm-cancel" class="btn">Cancel</button>
+            <button id="pm-ok" class="btn btn-primary">Create</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="zotero-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+          <div class="modal-header">
+            <div class="modal-title">
+              <i data-icon="book"></i>
+              <h2>Zotero</h2>
+            </div>
+            <button id="z-close" class="icon-btn" title="Close"><i data-icon="close"></i></button>
+          </div>
+          <div class="modal-tabs">
+            <button class="z-tab active" data-ztab="z-lib">Library</button>
+            <button class="z-tab" data-ztab="z-acct">Account</button>
+          </div>
+          <div class="modal-body">
+            <div id="z-lib" class="z-pane active">
+              <div class="drive-toolbar">
+                <div class="search-box"><input type="search" id="z-search" placeholder="Search title, author, year..." autocomplete="off" /></div>
+                <select id="z-collection" class="input-text z-select" title="Collection"><option value="">All items</option></select>
+              </div>
+              <div class="drive-files-container">
+                <div id="z-loading" class="drive-loading hidden"><div class="spinner"></div><span>Loading from Zotero...</span></div>
+                <div id="z-list" class="drive-files-list"></div>
+              </div>
+              <button id="z-more" class="btn btn-sm hidden" style="margin-top:10px">Load more</button>
+            </div>
+            <div id="z-acct" class="z-pane">
+              <div class="account-card">
+                <div class="account-profile">
+                  <div class="account-info">
+                    <h4 id="z-user">Not connected</h4>
+                    <p id="z-perms">Paste a Zotero API key to browse your library and import PDFs.</p>
+                  </div>
+                </div>
+                <div class="account-actions">
+                  <button id="z-disconnect" class="btn btn-danger hidden">Disconnect</button>
+                </div>
+              </div>
+              <div class="form-group" style="margin-top:16px">
+                <label for="z-key">Zotero API key (kept in this browser only):</label>
+                <div class="copy-field">
+                  <input type="password" id="z-key" class="input-text" placeholder="Paste your key" autocomplete="off" />
+                  <button id="z-connect" class="btn btn-primary">Connect</button>
+                </div>
+                <small class="hint">Create one at zotero.org/settings/keys: tick <b>Allow library access</b>; to save annotated PDFs back also tick <b>Allow write access</b>. Give it the least access you need.</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="toast-container" class="toast-container"></div>
+    </div>
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script type="module" src="./src/main.ts"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        const inTauri = !!window.__TAURI_INTERNALS__ || location.protocol === 'tauri:' || location.hostname === 'tauri.localhost';
+        if (inTauri) {
+          // Desktop app: no service worker. Remove one left by an older build (and its cache) so updates never show a stale page.
+          navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+          if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
+        } else {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch(err => {
+              console.warn('Service worker registration failed:', err);
+            });
+          });
+        }
+      }
+    </script>
+  </body>
+</html>

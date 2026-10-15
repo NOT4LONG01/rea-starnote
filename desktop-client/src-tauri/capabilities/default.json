@@ -1,0 +1,39 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the desktop window may do: talk to Zotero and Google natively, and open the Google sign-in page in the system browser.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://api.zotero.org/*"
+        },
+        {
+          "url": "https://*.zotero.net/*"
+        },
+        {
+          "url": "https://*.amazonaws.com/*"
+        },
+        {
+          "url": "https://oauth2.googleapis.com/*"
+        },
+        {
+          "url": "https://www.googleapis.com/*"
+        }
+      ]
+    },
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://accounts.google.com/*"
+        }
+      ]
+    }
+  ]
+}
