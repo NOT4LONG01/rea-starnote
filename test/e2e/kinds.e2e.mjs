@@ -20,7 +20,7 @@ const box = async () => ev(`JSON.stringify(document.getElementById('note-canvas'
 await ev(`document.querySelector('.card.create .card-thumb').click()`); await sleep(500);
 const kinds = await ev(`[...document.querySelectorAll('#pm-kind button')].map(e => e.textContent).join()`);
 const spacings = await ev(`[...document.querySelectorAll('#pm-spacing button')].map(e => e.textContent).join()`);
-ok(kinds === "Pages,Infinite", `the New note dialog offers the two types (${kinds})`);
+ok(kinds === "Pages,Infinite,Notebook", `the Create dialog offers the note types and Notebook (${kinds})`);
 ok(spacings === "Narrow,Medium,Wide", `and a line spacing (${spacings})`);
 ok(await ev(`document.querySelector('#pm-spacing button.active')?.textContent`) === "Medium", "Medium (about 7 mm lines) is the default");
 await click("#pm-cancel");

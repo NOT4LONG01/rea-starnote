@@ -514,3 +514,6 @@ span.crumb { color: var(--text); cursor: default; }
 .move-list button:not(:disabled):hover { border-color: var(--accent); }
 .move-list button i[data-icon] { width: 18px; height: 18px; flex: 0 0 auto; }
 @media (max-height: 520px) { .move-list { max-height: 60vh; } .move-list button { padding: 6px 10px; } }
+
+.pm-name { width: 100%; background: var(--bg-deep); color: var(--text); border: 1px solid #444; border-radius: 8px; padding: 9px 10px; font: 15px system-ui, sans-serif; }
+.pm-name:focus { outline: none; border-color: var(--accent); }
