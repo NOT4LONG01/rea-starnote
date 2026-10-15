@@ -15,6 +15,11 @@ A **notebook** is a folder for notes. Create one from *Create* (or the folder bu
 at the top (All notes › Physics › Lab) takes you back up. Notebooks nest, and a note you create or import while a notebook is
 open goes inside it. Move a note or notebook with *Move to…* in its menu, or drag its card onto a notebook card or onto a name
 in the path. The search looks in every notebook. Trashing a notebook trashes what is inside it, and restoring brings it all back.
+**Sections view (like OneNote).** Inside a notebook, switch *Grid* to *Sections*: the notebook's sub-notebooks become coloured tabs
+(sections), and the open section lists its pages. *+ Section* and *+ Page* add one; drag a page up or down (or *Move up / down*
+in its menu) to set the order; a section's menu has *Colour…*. In the editor the *Pages* button opens a rail with the other
+pages of the section. *Quick Notes* in the sidebar lists the notes that are not in any notebook. Page order and colours sync.
+
 On Google Drive each notebook is a sub-folder of the *StarNote* folder, nested the same way, and renames, moves and deletes
 are mirrored in both directions. Opened notes appear as tabs; the title at
 the top lists them.

@@ -35,26 +35,27 @@ function makeWorld() {
       return [...remoteFiles.values()].filter(live).map(({ data, ...f }) => f);
     },
     async trash(id) { const f = remoteFiles.get(id); if (f) f.trashed = true; },
-    async upload({ name, data, fileId, noteId, kind, parentId, fromParentId }) {
+    async upload({ name, data, fileId, noteId, kind, parentId, fromParentId, order }) {
       if (onUpload) await onUpload();
       let f = fileId ? remoteFiles.get(fileId) : undefined;
       if (fileId && !f) throw new Error("Drive 404");
       if (!f) { f = { id: `F${nextFile++}` }; remoteFiles.set(f.id, f); }
       if (fileId && fromParentId !== undefined && f.parentId !== fromParentId) throw new Error("the sync engine moved a file from a parent it is not in");
-      Object.assign(f, { name, noteId, kind, parentId, data: data.slice(), modifiedTime: new Date(tick()).toISOString() });
+      Object.assign(f, { name, noteId, kind, parentId, order, data: data.slice(), modifiedTime: new Date(tick()).toISOString() });
       const { data: _d, ...meta } = f;
       return meta;
     },
-    async createFolder({ name, noteId, parentId }) {
-      const f = { id: `F${nextFile++}`, name, noteId, kind: "note", mime: FOLDER, parentId, modifiedTime: new Date(tick()).toISOString() };
+    async createFolder({ name, noteId, parentId, color }) {
+      const f = { id: `F${nextFile++}`, name, noteId, kind: "note", mime: FOLDER, parentId, color: color || undefined, modifiedTime: new Date(tick()).toISOString() };
       remoteFiles.set(f.id, f);
       return { ...f };
     },
-    async update(id, { name, parentId }) {
+    async update(id, { name, parentId, color }) {
       const f = remoteFiles.get(id);
       if (!f) throw new Error("Drive 404");
       if (name !== undefined) f.name = name;
       if (parentId !== undefined) f.parentId = parentId;
+      if (color !== undefined) f.color = color || undefined;
       f.modifiedTime = new Date(tick()).toISOString();
       const { data: _d, ...meta } = f;
       return meta;
@@ -510,6 +511,28 @@ await test("deleting a notebook forever here trashes the Drive folder once (tomb
   const r = await run(w);
   assert.equal(r.trashedRemote, 1); assert.equal(w.remoteFiles.get(dirId).trashed, true);
   assert.equal(w.metas.has("fa"), false);
+});
+
+await test("a page's manual order and a notebook's colour travel with Drive both ways", async () => {
+  const w = makeWorld();
+  await w.addLocalFolder("fa", "A"); await w.local.update("fa", { color: "#cc3344" });
+  await w.addLocal("p1", "P1", "1", { parentId: "fa", order: 10 }); await w.addLocal("p2", "P2", "2", { parentId: "fa" });
+  await run(w);
+  assert.equal(folderOf(w, "fa").color, "#cc3344"); assert.equal(folderOf(w, "p1").order, 10); assert.equal(folderOf(w, "p2").order, undefined);
+  // reorder and recolour here
+  await w.local.update("p2", { order: 5, modified: w.tick() }); await w.local.update("fa", { color: "#2255aa", modified: w.tick() });
+  const r = await run(w);
+  assert.equal(r.errors.length, 0);
+  assert.equal(folderOf(w, "p2").order, 5); assert.equal(folderOf(w, "fa").color, "#2255aa");
+  // and from another device: a fresh library gets both
+  const remote = w.remoteFiles, w2 = makeWorld();
+  for (const [k, v] of remote) w2.remoteFiles.set(k, { ...v });
+  await run(w2);
+  assert.equal(w2.metas.get("fa").color, "#2255aa"); assert.equal(w2.metas.get("p2").order, 5); assert.equal(w2.metas.get("p1").order, 10);
+  // a colour removed here is cleared on Drive
+  await w.local.update("fa", { color: undefined, modified: w.tick() });
+  await run(w);
+  assert.equal(folderOf(w, "fa").color, undefined);
 });
 
 await test("a note whose notebook failed to sync is reported, the rest still sync", async () => {

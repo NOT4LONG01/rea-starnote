@@ -4,6 +4,7 @@ Versions follow [SemVer](https://semver.org) and stay 0.x until 1.0. Newest firs
 
 ## Unreleased
 ### Added
+- **Sections view** (OneNote-like, a Grid / Sections switch per notebook): sub-notebooks as coloured tabs, a page list with drag-to-reorder, a page rail beside the editor, *Quick Notes* for notes outside notebooks, notebook and section colours. Page order and colours sync via Drive file properties.
 - **Notebooks**: folders in the library, made from the one *Create* dialog (type Pages / Infinite / Notebook), that hold notes and other notebooks (create, nest, *Move to…*, drag and drop, breadcrumbs, search across all, trash and restore with contents). On Drive each is a nested sub-folder of *StarNote*; renames, moves and deletes sync both ways.
 - Note types: an **Infinite** canvas (tiles appear wherever you write), chosen in the New note dialog; `rea-starnote new --kind infinite`.
 - Line spacing choice (Narrow / Medium / Wide) and a Tablet 4:3 paper; lines are about 7 mm by default (Medium) instead of 12 mm. Older notes keep their spacing.

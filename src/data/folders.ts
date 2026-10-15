@@ -59,3 +59,25 @@ export function liveParent(items: LibraryItem[], item: LibraryItem): string | nu
   const p = item.parentId ? items.find((i) => i.id === item.parentId) : undefined;
   return p && isFolder(p) && !p.trashed ? p.id : null;
 }
+
+/** Where an item sits in a page list: its manual order, or its creation time (so new pages come last). */
+export const placeOf = (i: LibraryItem) => i.order ?? i.created;
+export const byPlace = (a: LibraryItem, b: LibraryItem) => placeOf(a) - placeOf(b) || a.title.localeCompare(b.title);
+
+/**
+ * The order value that puts an item at `index` in `list` (the list without the item being moved, sorted by place).
+ * Only the moved item changes: it takes the midpoint of its new neighbours.
+ */
+export function orderAt(list: LibraryItem[], index: number): number {
+  const prev = list[index - 1], next = list[index];
+  if (!prev && !next) return Date.now();
+  if (!prev) return placeOf(next) - 1000;
+  if (!next) return placeOf(prev) + 1000;
+  return (placeOf(prev) + placeOf(next)) / 2;
+}
+
+/** The notebook at the top of an item's path, and how deep the item is (0 = a top-level notebook). */
+export function rootNotebookOf(items: LibraryItem[], id: string | null): { root: LibraryItem | null; depth: number } {
+  const path = pathOf(items, id);
+  return { root: path[0] ?? null, depth: path.length - 1 };
+}

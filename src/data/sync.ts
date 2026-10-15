@@ -10,6 +10,8 @@ export interface RemoteFile {
   kind?: "note" | "pdf";
   mime?: string;
   parentId?: string; // the Drive folder it is in
+  order?: number;    // a note's manual place in its page list
+  color?: string;    // a notebook's colour
 }
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -20,10 +22,10 @@ export interface Remote {
   /** Everything below the root folder, files and folders at any depth (each with its `parentId`). */
   list(): Promise<RemoteFile[]>;
   /** Creates or (with `fileId`) replaces a file. `parentId` is where it belongs; when that differs from `fromParentId` it moves. */
-  upload(a: { name: string; data: Uint8Array; fileId?: string; noteId: string; kind: "note" | "pdf"; parentId: string; fromParentId?: string }): Promise<RemoteFile>;
-  createFolder(a: { name: string; noteId: string; parentId: string }): Promise<RemoteFile>;
+  upload(a: { name: string; data: Uint8Array; fileId?: string; noteId: string; kind: "note" | "pdf"; parentId: string; fromParentId?: string; order?: number }): Promise<RemoteFile>;
+  createFolder(a: { name: string; noteId: string; parentId: string; color?: string }): Promise<RemoteFile>;
   /** Renames and/or moves a folder without touching anything inside it. */
-  update(fileId: string, a: { name?: string; parentId?: string; fromParentId?: string }): Promise<RemoteFile>;
+  update(fileId: string, a: { name?: string; parentId?: string; fromParentId?: string; color?: string }): Promise<RemoteFile>;
   download(fileId: string): Promise<Uint8Array>;
   /** Moves the file to Drive's trash (recoverable there for 30 days). Never a permanent delete. */
   trash(fileId: string): Promise<void>;
@@ -155,7 +157,7 @@ export async function syncLibrary(remote: Remote, local: Local, hooks: SyncHooks
           continue;
         }
         if (f.syncId && massDisappearance) report.restored++;
-        const made = await remote.createFolder({ name: f.title, noteId: f.id, parentId: target });
+        const made = await remote.createFolder({ name: f.title, noteId: f.id, parentId: target, color: f.color });
         await upd(f.id, { syncId: made.id, syncRemote: made.modifiedTime, syncLocal: f.modified, syncParent: target });
         link(f.id, made.id);
         report.folders++;
@@ -169,12 +171,12 @@ export async function syncLibrary(remote: Remote, local: Local, hooks: SyncHooks
 
       if (localChanged) { // a rename or move here wins: it is cheap to redo and never loses a note
         let out = rf;
-        if (rf.name !== f.title || (rf.parentId ?? root) !== target) out = await remote.update(rf.id, { name: f.title, parentId: target, fromParentId: rf.parentId });
+        if (rf.name !== f.title || (rf.parentId ?? root) !== target || (rf.color ?? undefined) !== (f.color ?? undefined)) out = await remote.update(rf.id, { name: f.title, parentId: target, fromParentId: rf.parentId, color: f.color ?? "" }); // "" clears a colour removed here
         await upd(f.id, { syncId: rf.id, syncRemote: out.modifiedTime, syncLocal: f.modified, syncParent: target });
       } else { // changed in Drive: take its name and place
         const into = localParentOf(rf);
         const t = hooks.now(); // local clock, see importFile
-        await upd(f.id, { title: rf.name, parentId: into && canMoveTo([...itemById.values()], f.id, into) ? into : f.parentId, modified: t, syncRemote: rf.modifiedTime, syncLocal: t, syncParent: rf.parentId ?? root });
+        await upd(f.id, { title: rf.name, color: rf.color, parentId: into && canMoveTo([...itemById.values()], f.id, into) ? into : f.parentId, modified: t, syncRemote: rf.modifiedTime, syncLocal: t, syncParent: rf.parentId ?? root });
       }
       report.folders++;
     } catch (e: any) {
@@ -192,7 +194,7 @@ export async function syncLibrary(remote: Remote, local: Local, hooks: SyncHooks
       const t = hooks.now();
       const item: LibraryItem = {
         id: !localIds.has(rf.noteId) ? rf.noteId : hooks.newId(),
-        title: rf.name, kind: "folder", created: stamp(rf.modifiedTime, t), modified: t, trashed: false,
+        title: rf.name, kind: "folder", color: rf.color, created: stamp(rf.modifiedTime, t), modified: t, trashed: false,
         parentId: localParentOf(rf) ?? undefined, syncId: rf.id, syncRemote: rf.modifiedTime, syncLocal: t, syncParent: rf.parentId ?? root,
       };
       await local.create(item);
@@ -211,7 +213,7 @@ export async function syncLibrary(remote: Remote, local: Local, hooks: SyncHooks
     if (!parent) throw new Error("the notebook it is in is not on Drive yet");
     const bytes = await local.getBytes(item.id);
     if (!bytes) throw new Error("note data is missing");
-    const out = await remote.upload({ name: `${item.title}.note`, data: bytes, fileId: rf?.id, noteId: item.id, kind: item.kind as "note" | "pdf", parentId: parent, fromParentId: rf?.parentId });
+    const out = await remote.upload({ name: `${item.title}.note`, data: bytes, fileId: rf?.id, noteId: item.id, kind: item.kind as "note" | "pdf", parentId: parent, fromParentId: rf?.parentId, order: item.order });
     // Only the sync fields are written: a save that landed meanwhile keeps its newer `modified` and re-syncs next round.
     await local.update(item.id, { syncId: out.id, syncRemote: out.modifiedTime, syncLocal: item.modified, syncParent: parent });
     report.uploaded++;
@@ -233,6 +235,7 @@ export async function syncLibrary(remote: Remote, local: Local, hooks: SyncHooks
       modified: t,
       trashed: false,
       thumb: info.thumb,
+      ...(rf.order !== undefined ? { order: rf.order } : {}),
       ...(parent ? { parentId: parent } : {}),
       ...(opts.link ? { syncId: rf.id, syncRemote: rf.modifiedTime, syncLocal: t, syncParent: rf.parentId ?? root } : {}),
     };
@@ -287,7 +290,7 @@ export async function syncLibrary(remote: Remote, local: Local, hooks: SyncHooks
         const info = await hooks.inspect(bytes, item.kind as "note" | "pdf");
         const t = hooks.now(); // local clock, see importFile
         hooks.release?.(item.id);
-        const fields: Partial<LibraryItem> = { title: baseName(rf.name), modified: t, thumb: info.thumb, syncId: rf.id, syncRemote: rf.modifiedTime, syncLocal: t, syncParent: rf.parentId ?? root };
+        const fields: Partial<LibraryItem> = { title: baseName(rf.name), order: rf.order, modified: t, thumb: info.thumb, syncId: rf.id, syncRemote: rf.modifiedTime, syncLocal: t, syncParent: rf.parentId ?? root };
         if (remoteMoved) { fields.parentId = localParentOf(rf) ?? undefined; report.moved++; }
         await local.update(item.id, fields, bytes);
         report.pulled++;

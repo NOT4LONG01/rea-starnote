@@ -9,6 +9,8 @@ export interface LibraryItem {
   title: string;
   kind: "note" | "pdf" | "folder"; // a folder is a notebook: it holds notes and other folders (see folders.ts) and has no bytes
   parentId?: string; // the folder it is in (unset = top level)
+  order?: number; // manual place among its siblings in a page list (unset = by creation time, see folders.ts)
+  color?: string; // a notebook's or section's colour (#rrggbb)
   created: number;
   modified: number;
   trashed: boolean;
