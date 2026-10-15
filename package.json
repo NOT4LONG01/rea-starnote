@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node test/run-all.mjs",
     "check": "npm run typecheck && npm test && npm run build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:e2e": "node test/e2e/toolbar.e2e.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
