@@ -1002,6 +1002,9 @@ export class CanvasRenderer {
 
   public hasSelection(): boolean { return this.selected.size > 0; }
 
+  /** True while a pen/finger gesture is in progress (drawing, erasing, a lasso, a move, a shape being dragged). */
+  public isBusy(): boolean { return this.isDrawing || this.isErasing || this.isLassoing || this.isMovingSel || !!this.shapeFrom; }
+
   public clearSelection() {
     if (this.selected.size === 0 && !this.isLassoing && !this.isMovingSel) return;
     this.selected.clear();

@@ -452,8 +452,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function leaveToLibrary() {
     if (active) {
+      const s = active;
       park();
-      await saveSession(active);
+      if (s.isNew && !isDirty(s)) { // a note nobody wrote on is not kept: no card, and no stale tab
+        sessions.splice(sessions.indexOf(s), 1);
+        active = null;
+        renderTabs();
+      } else await saveSession(s);
     }
     showView("library");
     await refreshLibrary();
@@ -552,10 +557,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   $("canvas-container").addEventListener("pointerdown", () => { if (optionsOpen && !renderer.hasSelection()) { optionsOpen = false; renderToolOptions(); } }, true); // a flyout must not sit on the page while you draw
 
+  // Autosave: a few seconds after the last change the work is written to the library, so closing the app loses next to nothing
+  let autosaveTimer = 0;
+  const AUTOSAVE_MS = 4000;
+  function scheduleAutosave() {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = window.setTimeout(() => {
+      if (!active || !isDirty(active)) return;
+      if (renderer.isBusy() || renderer.hasSelection()) { scheduleAutosave(); return; } // not in the middle of a gesture or with a selection held
+      void saveSession(active);
+    }, AUTOSAVE_MS);
+  }
   renderer.onChange = () => {
     if (!active) return;
     renderEditorChrome();
     renderTabs();
+    if (isDirty(active)) scheduleAutosave();
   };
   renderer.onZoomChange = (z) => { $("zoom-level").textContent = `${Math.round(z * 100)}%`; };
   let lastPageLabel = "";
@@ -1125,14 +1142,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // unsaved work: flush when the tab is hidden, warn when it is closed
+  // unsaved work: flush when the window is hidden; a browser tab also warns when it is closed
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "hidden") return;
     if (active) park();
     sessions.forEach((s) => { if (isDirty(s)) saveSession(s); });
   });
   window.addEventListener("beforeunload", (e) => {
-    if (sessions.some(isDirty)) e.preventDefault();
+    if (!isDesktopApp() && sessions.some(isDirty)) e.preventDefault(); // the apps just close: autosave and the hidden-flush above keep the work
   });
 
   // ============================================================ library chrome
