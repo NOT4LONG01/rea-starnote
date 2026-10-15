@@ -11,7 +11,7 @@
     "test": "node test/run-all.mjs",
     "check": "npm run typecheck && npm test && npm run build",
     "tauri": "tauri",
-    "test:e2e": "node test/e2e/toolbar.e2e.mjs"
+    "test:e2e": "node test/e2e/run-all.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
