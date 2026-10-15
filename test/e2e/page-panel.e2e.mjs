@@ -26,6 +26,9 @@ ok(f.w === 1485 && f.h === 1046, `A5 keeps the orientation (${f.w}x${f.h})`);
 await chip("Line spacing", "Wide");
 ok((await fmt(0)).spacing === 70, "line spacing applies");
 
+await act("+ Page at end");
+ok((await fmt(1)).spacing === 70, `a new page keeps the line spacing of the page before it (${(await fmt(1)).spacing})`);
+await act("Delete page");
 await act("+ Page after");
 ok(await head() === "Page 2 of 2", `+ Page after adds and shows page 2 (${await head()})`);
 await chip("Apply to", "All pages");
