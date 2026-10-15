@@ -2,8 +2,7 @@
 
 Versions follow [SemVer](https://semver.org). Newest first.
 
-## 1.0.0-beta.1
-First 1.0 beta, for testing on real phones. The release line is `release/1.0` (see docs/branching.md).
+## Unreleased
 ### Added
 - **Sections view** (OneNote-like, a Grid / Sections switch per notebook): sub-notebooks as coloured tabs, a page list with drag-to-reorder, a page rail beside the editor, *Quick Notes* for notes outside notebooks, notebook and section colours. Page order and colours sync via Drive file properties.
 - **Notebooks**: folders in the library, made from the one *Create* dialog (type Pages / Infinite / Notebook), that hold notes and other notebooks (create, nest, *Move to…*, drag and drop, breadcrumbs, search across all, trash and restore with contents). On Drive each is a nested sub-folder of *StarNote*; renames, moves and deletes sync both ways.

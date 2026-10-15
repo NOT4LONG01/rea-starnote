@@ -1,4 +1,4 @@
-# Retest 13 (Windows): 1.0.0-beta.1, sections view, narrow window, and what bundle 12 left open
+# Retest 13 (Windows): sections view, narrow window, and what bundle 12 left open
 
 Test only; do not edit source. Same rules as `WINDOWS_QA.md` (never type or store credentials; Drive/Zotero writes only
 with the person's approval; touch only notes and notebooks you create, prefix `QA-`). Report in
@@ -8,8 +8,8 @@ ask the person to do that check by hand and say so in the report.
 
 ## 0. Setup
 `npm ci`, then `npm run check`. Expected test files: cli 9, desktop-oauth 17, erase-saved 8, folders 10, pages 8, pdf-export 10
-(or BLOCKED without Pillow), sync 48, zotero 18. Optional `npm run test:e2e` (needs Chrome): 8 files. The app's version is
-1.0.0-beta.1 (window title / About, `rea-starnote --version`).
+(or BLOCKED without Pillow), sync 48, zotero 18. Optional `npm run test:e2e` (needs Chrome): 8 files.
+If this bundle comes back with no problems, the next build becomes 1.0.0-beta.1 (the owner's rule), so please be thorough.
 
 ## 1. Checks (PASS / FAIL / BLOCKED / NOT RUN + one line of evidence)
 | # | Area | Check |
