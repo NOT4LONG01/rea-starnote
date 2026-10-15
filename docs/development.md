@@ -17,7 +17,7 @@
 | `npm run test:e2e` | browser tests (need Chrome) |
 | `npm run tauri dev` / `npm run tauri build` | desktop app (`-- --no-bundle` for just the binary) |
 
-`test/pdf-export.test.mjs` needs `pdfinfo`, `pdftoppm`, `pdftotext` (poppler) and Python with Pillow; Ghostscript is optional.
+`test/pdf-export.test.mjs` needs `pdfinfo`, `pdftoppm`, `pdftotext` (poppler) and Python with Pillow; Ghostscript is optional. Without them it reports BLOCKED (exit 77) and `npm test` goes on and does not fail.
 
 ## Adding a test
 Copy the header of `test/pages.test.mjs`: bundle the modules you need with esbuild, then use `assert`. Keep tests on

@@ -19,13 +19,15 @@ const test = async (name, fn) => { await fn(); passed++; console.log(`  ok  ${na
 // Portable tool lookup: `where` on Windows, `which` elsewhere; Ghostscript is gswin64c/gswin32c there; Python is python/py.
 const WIN = process.platform === "win32";
 const found = (cmd) => spawnSync(WIN ? "where" : "which", [cmd], { encoding: "utf8" }).status === 0;
-const first = (...names) => { const n = names.find(found); if (!n) throw new Error(`${names[0]} is required for this test (looked for: ${names.join(", ")})`); return n; };
+// A missing tool is not a failure of the code under test: report BLOCKED and exit 77 (run-all counts it as blocked, not failed).
+const blocked = (why) => { console.log(`  BLOCKED  ${why}`); process.exit(77); };
+const first = (...names) => names.find(found) ?? blocked(`${names[0]} is needed (looked for: ${names.join(", ")}); install poppler and Python with Pillow`);
 ["pdfinfo", "pdftoppm", "pdftotext"].forEach((c) => first(c));
 const GS = (WIN ? ["gswin64c", "gswin32c", "gs"] : ["gs"]).find(found) ?? null; // Ghostscript is an extra validator: without it those checks are skipped (and reported)
 if (!GS) console.log("  note: Ghostscript not found, its validity checks are skipped (poppler still validates every file)");
 const gsCheck = (f) => (GS ? spawnSync(GS, ["-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=nullpage", f], { encoding: "utf8" }) : { status: 0, stdout: "", stderr: "" });
 const PY = first(...(WIN ? ["python", "py", "python3"] : ["python3"]));
-if (spawnSync(PY, ["-c", "import PIL"]).status !== 0) throw new Error("Python with Pillow (PIL) is required for this test");
+if (spawnSync(PY, ["-c", "import PIL"]).status !== 0) blocked("Python has no Pillow (pip install pillow)");
 const lsPng = (prefix) => { // the first file the renderer wrote with this prefix
   const dir = dirname(prefix), base = prefix.slice(dir.length + 1);
   return join(dir, readdirSync(dir).filter((f) => f.startsWith(base) && f.endsWith(".png")).sort()[0]);
