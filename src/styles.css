@@ -487,7 +487,7 @@ body.eink-mode .sb-thumb { background: #000; }
   .topbar-title { display: block; font-size: 14px; max-width: 34vw; cursor: pointer; }
   .zoom-level { min-width: 40px; }
   .toolrow { grid-column: 1; grid-row: 2; flex-direction: column; width: 48px; height: auto; padding: 6px 2px; gap: 2px; overflow-x: hidden; overflow-y: auto; border-bottom: 0; border-right: 1px solid #1f1f1f; }
-  .toolrow .icon-btn { width: 42px; height: 42px; flex: none; }
+  .toolrow .icon-btn { width: 42px; height: min(42px, calc((100vh - 36px - 50px) / 8)); flex: none; } /* all 8 tools fit a ~411 px tall phone, Hand included */
   .toolrow .vsep { width: 28px; height: 1px; margin: 3px 0; }
   .icon-btn.pen-detail { width: 42px; height: 22px; margin: -6px 0 0; }
   .canvas-container { grid-column: 2; grid-row: 2; }
@@ -561,3 +561,8 @@ span.crumb { color: var(--text); cursor: default; }
 .page-rail .rail-item small { color: var(--muted); font-size: 11px; }
 .page-rail .rail-add { margin: 8px; }
 #btn-pages.on { color: var(--accent); }
+
+/* a short screen with the keyboard up: the Math panel's Done / Cancel come first, the snippets scroll */
+@media (max-height: 520px) { .text-editor .te-bar { order: -1; } }
+/* the path stays on one line on a narrow screen and scrolls sideways */
+@media (max-width: 900px) { .lib-head h1 { flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; scrollbar-width: none; } }

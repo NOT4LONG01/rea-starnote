@@ -7,6 +7,7 @@ import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -14,6 +15,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : TauriActivity() {
+  // Back is the app's: it closes a menu or dialog, leaves the editor, goes up a notebook; only at the top it leaves the app
+  override val handleBackNavigation: Boolean = false
+
   private var pendingBytes: ByteArray? = null
 
   // The system "Save as" dialog: the user picks where the file goes, so no storage permission is needed.
@@ -49,6 +53,17 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     webView.addJavascriptInterface(Bridge(), "StarNoteAndroid")
+    onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+      override fun handleOnBackPressed() {
+        webView.evaluateJavascript("(window.__reaBack && window.__reaBack()) === true") { handled ->
+          if (handled != "true") { // nothing left to close: the usual Back (leave the app)
+            isEnabled = false
+            onBackPressedDispatcher.onBackPressed()
+            isEnabled = true
+          }
+        }
+      }
+    })
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
