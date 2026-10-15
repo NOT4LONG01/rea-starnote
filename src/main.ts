@@ -8,6 +8,7 @@ import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serialize
 import { GoogleDriveService, GoogleDriveFile } from "./integrations/google-drive";
 import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
 import { library, renderThumbnail, LibraryItem } from "./data/library";
+import { isFolder, childrenOf, descendantsOf, pathOf, canMoveTo, noteCount, visibleTrash, liveParent } from "./data/folders";
 import { isDesktopApp } from "./integrations/net";
 import { syncLibrary } from "./data/sync";
 import { ZoteroClient, ZoteroItem, ZoteroPdf, ZoteroCollection } from "./integrations/zotero";
@@ -50,6 +51,7 @@ const ICONS: Record<string, string> = {
   highlighter: '<path d="M9 3l7 7-6 6-3-1-3 3H2l3-4-1-3z"/><path d="M14 12l6-6M5 21h15"/>',
   lasso: '<path d="M12 4c-5 0-9 2.4-9 5.5S7 15 12 15s9-2.4 9-5.5S17 4 12 4z" stroke-dasharray="3 2.4"/><path d="M9 15c-.8 2.6.6 5 3 5"/>',
   paste: '<rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V4a1 1 0 011-1h4a1 1 0 011 1v1M9 12h6M9 16h6"/>',
+  folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
 };
 
@@ -143,6 +145,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let active: Session | null = null;
 
   const ui = {
+    folder: null as string | null, // the notebook being shown (null = top level)
     filter: "all" as "all" | "trash",
     kind: "all" as "all" | "note" | "pdf",
     query: "",
@@ -183,17 +186,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function visibleItems(): LibraryItem[] {
     const q = ui.query.trim().toLowerCase();
-    return items
-      .filter((i) => (ui.filter === "trash" ? i.trashed : !i.trashed))
-      .filter((i) => ui.kind === "all" || i.kind === ui.kind)
-      .filter((i) => !q || i.title.toLowerCase().includes(q))
-      .sort((a, b) => (ui.sort === "title" ? a.title.localeCompare(b.title) : b[ui.sort] - a[ui.sort]));
+    const live = items.filter((i) => !i.trashed);
+    const here = ui.filter === "trash" ? visibleTrash(items) : q ? live.filter((i) => i.title.toLowerCase().includes(q)) : live.filter((i) => liveParent(items, i) === ui.folder); // an item whose notebook is gone or trashed shows at the top level; a search looks in every notebook
+    return here
+      .filter((i) => ui.kind === "all" || (!isFolder(i) && i.kind === ui.kind))
+      .sort((a, b) => Number(isFolder(b)) - Number(isFolder(a)) || (ui.sort === "title" ? a.title.localeCompare(b.title) : b[ui.sort] - a[ui.sort])); // notebooks first
   }
 
   function renderLibrary() {
-    $("count-all").textContent = String(items.filter((i) => !i.trashed).length);
-    $("count-trash").textContent = String(items.filter((i) => i.trashed).length);
-    $("lib-title").textContent = ui.filter === "trash" ? "Trash" : "All notes";
+    if (ui.folder && !items.some((i) => i.id === ui.folder && isFolder(i) && !i.trashed)) ui.folder = null; // the notebook is gone (deleted or synced away)
+    $("count-all").textContent = String(items.filter((i) => !i.trashed && !isFolder(i)).length);
+    $("count-trash").textContent = String(visibleTrash(items).length);
+    renderCrumbs();
     $("lib-drop-hint").innerHTML = ui.filter === "trash"
       ? "Trashed notes are also moved to Google Drive's trash when sync is on (Drive keeps them 30 days)."
       : "Drop a <b>.note</b> or <b>.pdf</b> file anywhere to import it.";
@@ -214,10 +218,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       meta.appendChild(el("div", "card-date", "Start a blank note"));
       create.append(thumb, meta);
       grid.appendChild(create);
+      if (!ui.query && ui.kind === "all") { // a notebook is created from here too
+        const nf = el("div", "card create folder");
+        const nt = el("button", "card-thumb");
+        nt.title = "Create a new notebook (a folder for notes)";
+        nt.innerHTML = '<i data-icon="folder"></i>';
+        nt.addEventListener("click", () => void newFolder());
+        const nm = el("div", "card-meta");
+        nm.appendChild(el("div", "card-title", "Notebook"));
+        nm.appendChild(el("div", "card-date", ui.folder ? "A folder inside this one" : "A folder for notes"));
+        nf.append(nt, nm);
+        grid.appendChild(nf);
+      }
     }
 
     const list = visibleItems();
-    for (const item of list) grid.appendChild(card(item));
+    for (const item of list) grid.appendChild(isFolder(item) ? folderCard(item) : card(item));
     if (list.length === 0 && ui.filter === "trash") grid.appendChild(el("div", "empty-state", "Trash is empty."));
     if (list.length === 0 && ui.filter === "all" && (ui.query || ui.kind !== "all")) grid.appendChild(el("div", "empty-state", "No notes match."));
     hydrateIcons(grid);
@@ -225,6 +241,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function card(item: LibraryItem): HTMLElement {
     const c = el("div", "card");
+    if (!item.trashed) makeDraggable(c, item);
     const thumb = el("button", "card-thumb");
     if (item.thumb) {
       const img = el("img");
@@ -260,6 +277,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           root.append(
             popItem("Open", "notes", () => openItem(item.id)),
             popItem("Rename", "pen", () => renameItem(item)),
+            popItem("Move to…", "folder", () => void moveItemTo(item)),
             popItem("Duplicate", "copy", () => duplicateItem(item)),
             popItem("Download .note", "download", () => downloadItem(item)),
             popItem("Move to trash", "trash", () => setTrashed(item, true), { danger: true })
@@ -275,24 +293,38 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function setTrashed(item: LibraryItem, trashed: boolean) {
-    await library.update(item.id, { trashed });
-    if (trashed) closeSession(sessions.find((s) => s.item.id === item.id), true);
+    const folder = isFolder(item);
+    const all = folder ? [item, ...descendantsOf(items, item.id)] : [item]; // a notebook takes its contents with it, both ways
+    if (folder && trashed) {
+      const n = noteCount(items, item.id);
+      if (n && !confirm(`Move the notebook "${item.title}" and its ${n} note${n === 1 ? "" : "s"} to the trash?`)) return;
+    }
+    for (const it of all) {
+      const fields: Partial<LibraryItem> = { trashed };
+      if (!trashed && it === item && it.parentId && !liveParent(items, it)) { fields.parentId = undefined; fields.modified = Date.now(); } // its notebook is in the trash: it comes back at the top level
+      await library.update(it.id, fields);
+      if (trashed) closeSession(sessions.find((s) => s.item.id === it.id), true);
+    }
     await refreshLibrary();
     showToast(trashed ? "Moved to trash" : "Restored", "info");
     scheduleSync(); // the Drive copy follows (Drive's trash is recoverable for 30 days)
   }
 
   async function deleteForever(item: LibraryItem) {
-    if (!confirm(`Permanently delete "${item.title}"? This cannot be undone.`)) return;
-    if (item.syncId) addTombstone(item.syncId); // the Drive copy stays; just never re-import it
-    await library.remove(item.id);
-    closeSession(sessions.find((s) => s.item.id === item.id), true);
+    const all = isFolder(item) ? [item, ...descendantsOf(items, item.id)] : [item];
+    const what = isFolder(item) ? `the notebook "${item.title}" and everything in it (${all.length - 1} item${all.length === 2 ? "" : "s"})` : `"${item.title}"`;
+    if (!confirm(`Permanently delete ${what}? This cannot be undone.`)) return;
+    for (const it of all) {
+      if (it.syncId) addTombstone(it.syncId); // the Drive copy stays; just never re-import it
+      await library.remove(it.id);
+      closeSession(sessions.find((s) => s.item.id === it.id), true);
+    }
     await refreshLibrary();
     scheduleSync();
   }
 
   async function renameItem(item: LibraryItem) {
-    const name = prompt("Rename note", item.title)?.trim();
+    const name = prompt(isFolder(item) ? "Rename notebook" : "Rename note", item.title)?.trim();
     if (!name || name === item.title) return;
     const fields = { title: name, modified: Date.now() };
     await library.update(item.id, fields);
@@ -301,6 +333,133 @@ document.addEventListener("DOMContentLoaded", async () => {
     scheduleSync();
     await refreshLibrary();
     renderEditorChrome();
+  }
+
+  // ---------- notebooks (folders): create, open, move
+  let dragId: string | null = null; // the card being dragged inside the library (a file dragged in from outside has no id)
+  async function newFolder() {
+    const name = prompt("New notebook", "Notebook")?.trim();
+    if (!name) return;
+    const now = Date.now();
+    await library.put({ id: crypto.randomUUID(), title: name, kind: "folder", created: now, modified: now, trashed: false, parentId: ui.folder ?? undefined });
+    await refreshLibrary();
+    scheduleSync();
+  }
+  function openFolder(id: string | null) {
+    ui.folder = id;
+    ui.query = "";
+    $<HTMLInputElement>("lib-search").value = "";
+    renderLibrary();
+  }
+  async function moveItem(item: LibraryItem, target: string | null) {
+    if ((item.parentId ?? null) === target || !canMoveTo(items, item.id, target)) return;
+    const fields = { parentId: target ?? undefined, modified: Date.now() };
+    await library.update(item.id, fields);
+    const s = sessions.find((x) => x.item.id === item.id);
+    if (s) s.item = { ...s.item, ...fields };
+    await refreshLibrary();
+    showToast(`Moved to ${target ? items.find((i) => i.id === target)?.title ?? "the notebook" : "All notes"}`, "info");
+    scheduleSync();
+  }
+  async function moveItemTo(item: LibraryItem) {
+    const dest = await pickFolder(`Move "${item.title}" to`, item);
+    if (dest !== undefined) await moveItem(item, dest);
+  }
+  /** The "Move to" chooser: the top level and every notebook, indented. Resolves to the folder id, null (top level) or undefined (cancelled). */
+  function pickFolder(title: string, moving: LibraryItem): Promise<string | null | undefined> {
+    return new Promise((resolve) => {
+      const modal = $("move-modal"), list = $("move-list");
+      $("move-title").textContent = title;
+      list.innerHTML = "";
+      const done = (v: string | null | undefined) => { modal.classList.add("hidden"); resolve(v); };
+      const row = (label: string, id: string | null, depth: number) => {
+        const b = el("button");
+        b.style.paddingLeft = `${12 + depth * 18}px`;
+        b.innerHTML = '<i data-icon="folder"></i><span></span>';
+        b.querySelector("span")!.textContent = label;
+        b.disabled = !canMoveTo(items, moving.id, id) || (moving.parentId ?? null) === id;
+        b.addEventListener("click", () => done(id));
+        list.appendChild(b);
+      };
+      row("All notes (top level)", null, 0);
+      const walk = (parent: string | null, depth: number) => {
+        for (const f of childrenOf(items.filter((i) => isFolder(i) && !i.trashed), parent).sort((a, b) => a.title.localeCompare(b.title))) { row(f.title, f.id, depth); walk(f.id, depth + 1); }
+      };
+      walk(null, 1);
+      hydrateIcons(list);
+      $("move-cancel").onclick = $("move-close").onclick = () => done(undefined);
+      modal.classList.remove("hidden");
+    });
+  }
+  /** Dragging a card onto a notebook card or a breadcrumb moves it there (mouse and pen; on touch use "Move to…"). */
+  function makeDraggable(c: HTMLElement, item: LibraryItem) {
+    c.draggable = true;
+    c.addEventListener("dragstart", (e) => { dragId = item.id; e.dataTransfer?.setData("text/x-starnote-item", item.id); if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"; });
+    c.addEventListener("dragend", () => { dragId = null; });
+  }
+  function dropTarget(target: HTMLElement, folderId: string | null) {
+    const ok = () => { const it = dragId ? items.find((i) => i.id === dragId) : undefined; return !!it && canMoveTo(items, it.id, folderId) && (it.parentId ?? null) !== folderId; };
+    target.addEventListener("dragover", (e) => { if (!dragId) return; e.stopPropagation(); if (ok()) { e.preventDefault(); target.classList.add("drop"); } });
+    target.addEventListener("dragleave", () => target.classList.remove("drop"));
+    target.addEventListener("drop", (e) => {
+      target.classList.remove("drop");
+      if (!dragId) return;
+      e.preventDefault(); e.stopPropagation();
+      const it = items.find((i) => i.id === dragId);
+      dragId = null;
+      if (it && canMoveTo(items, it.id, folderId)) void moveItem(it, folderId);
+    });
+  }
+  function renderCrumbs() {
+    const h = $("lib-title");
+    h.innerHTML = "";
+    if (ui.filter === "trash") { h.textContent = "Trash"; return; }
+    const path = pathOf(items, ui.folder);
+    const crumb = (label: string, id: string | null, current: boolean) => {
+      const b = el(current ? "span" : "button", "crumb", label);
+      if (!current) { b.addEventListener("click", () => openFolder(id)); dropTarget(b, id); }
+      return b;
+    };
+    h.appendChild(crumb("All notes", null, path.length === 0));
+    path.forEach((f, i) => { h.append(el("span", "crumb-sep", "›"), crumb(f.title, f.id, i === path.length - 1)); });
+  }
+  function folderCard(item: LibraryItem): HTMLElement {
+    const c = el("div", "card folder-card");
+    const thumb = el("button", "card-thumb");
+    thumb.innerHTML = '<i data-icon="folder"></i>';
+    const n = noteCount(items, item.id);
+    thumb.appendChild(el("span", "folder-count", String(n)));
+    if (item.syncId) {
+      const pending = item.modified > (item.syncLocal ?? 0);
+      const b = el("span", `card-sync${pending ? " pending" : ""}`);
+      b.title = pending ? "Waiting to sync to Drive" : "Synced to Drive";
+      b.innerHTML = '<i data-icon="cloud"></i>';
+      thumb.appendChild(b);
+    }
+    thumb.addEventListener("click", () => (item.trashed ? showToast("Restore this notebook to open it.", "info") : openFolder(item.id)));
+    if (!item.trashed) { makeDraggable(c, item); dropTarget(c, item.id); }
+    const title = el("div", "card-title");
+    title.appendChild(el("span", "", item.title));
+    const menu = el("button");
+    menu.dataset.pop = "1";
+    menu.innerHTML = '<i data-icon="chevron"></i>';
+    menu.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openPopover(menu, (root) => {
+        if (item.trashed) root.append(popItem("Restore", "undo", () => setTrashed(item, false)), popItem("Delete forever", "trash", () => deleteForever(item), { danger: true }));
+        else root.append(
+          popItem("Open", "folder", () => openFolder(item.id)),
+          popItem("Rename", "pen", () => renameItem(item)),
+          popItem("Move to…", "folder", () => void moveItemTo(item)),
+          popItem("Move to trash", "trash", () => setTrashed(item, true), { danger: true })
+        );
+      });
+    });
+    title.appendChild(menu);
+    const meta = el("div", "card-meta");
+    meta.append(title, el("div", "card-date", `${n} note${n === 1 ? "" : "s"}`));
+    c.append(thumb, meta);
+    return c;
   }
 
   async function duplicateItem(item: LibraryItem) {
@@ -326,15 +485,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ============================================================ import
-  async function importBuffer(filename: string, buf: ArrayBuffer, driveId?: string, extra?: { title?: string; zotero?: LibraryItem["zotero"] }): Promise<LibraryItem> {
+  async function importBuffer(filename: string, buf: ArrayBuffer, driveId?: string, extra?: { title?: string; zotero?: LibraryItem["zotero"]; parentId?: string | null }): Promise<LibraryItem> {
     const now = Date.now();
+    const parentId = (extra && "parentId" in extra ? extra.parentId : ui.folder) ?? undefined; // a synced file lands in its Drive folder's notebook, anything else in the one on screen
     const id = crypto.randomUUID();
     if (filename.toLowerCase().endsWith(".pdf")) {
       showToast(`Rendering "${filename}"...`, "info");
       const pdf = await loadPdfDocument(buf, filename, 2100);
       const doc = convertPdfToStarNoteDocument(pdf);
       const bytes = await exportStarNoteArchive(doc, []);
-      const item: LibraryItem = { id, title: extra?.title ?? baseName(filename), kind: "pdf", created: now, modified: now, trashed: false, thumb: renderThumbnail(doc), zotero: extra?.zotero };
+      const item: LibraryItem = { id, title: extra?.title ?? baseName(filename), kind: "pdf", created: now, modified: now, trashed: false, parentId, thumb: renderThumbnail(doc), zotero: extra?.zotero };
       await library.put(item, bytes);
       return item;
     }
@@ -347,7 +507,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     // The file name names the note: StarNote itself saves "<title>.note", and many files share one embedded title.
     const title = baseName(filename);
-    const item: LibraryItem = { id, title, kind: "note", created: now, modified: now, trashed: false, driveId, thumb: renderThumbnail(doc) };
+    const item: LibraryItem = { id, title, kind: "note", created: now, modified: now, trashed: false, driveId, parentId, thumb: renderThumbnail(doc) };
     await library.put(item, new Uint8Array(buf)); // keep the original bytes untouched
     return item;
   }
@@ -378,7 +538,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     fileInput.value = ""; // re-selecting the same file must fire change again
   });
   for (const zone of [$("lib-main"), $("canvas-container")]) {
-    zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+    zone.addEventListener("dragover", (e) => { if (dragId) return; e.preventDefault(); zone.classList.add("drag"); }); // a card moved inside the library is not a file drop
     zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
     zone.addEventListener("drop", async (e) => {
       e.preventDefault();
@@ -421,7 +581,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       doc.tiles.set("Page[0-0]", newPageTile("Page[0-0]", format));
       relayout(doc);
     }
-    const item: LibraryItem = { id: crypto.randomUUID(), title: "Untitled note", kind: "note", created: now, modified: now, trashed: false };
+    const item: LibraryItem = { id: crypto.randomUUID(), title: "Untitled note", kind: "note", created: now, modified: now, trashed: false, parentId: ui.folder ?? undefined };
     const s: Session = { item, doc, view: null, isNew: true, saving: null, inFlight: 0 };
     sessions.push(s);
     activate(s);
@@ -1300,6 +1460,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   );
   $<HTMLInputElement>("lib-search").addEventListener("input", (e) => { ui.query = (e.target as HTMLInputElement).value; renderLibrary(); });
 
+  $("btn-new-folder").addEventListener("click", () => void newFolder());
   $("btn-sort").dataset.pop = "1";
   $("btn-sort").addEventListener("click", (e) => {
     openPopover(e.currentTarget as HTMLElement, (root) => {
@@ -1580,8 +1741,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           },
           tombstones: new Set(readTombstones()),
           sourceDone: (fileId) => readSources().includes(fileId),
-          importSource: async (file, data) => {
-            await importBuffer(file.name, toBuffer(data)); // becomes a normal note; it uploads as its own file next round
+          importSource: async (file, data, parentId) => {
+            await importBuffer(file.name, toBuffer(data), undefined, { parentId }); // becomes a normal note; it uploads as its own file next round
             pref.set(SOURCES, JSON.stringify([...readSources(), file.id]));
           },
           inspect: async (bytes) => ({ thumb: renderThumbnail(await loadStarNoteArchive(toBuffer(bytes))) }),

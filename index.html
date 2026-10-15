@@ -53,6 +53,7 @@
             <button id="btn-sidebar-open" class="icon-btn only-collapsed" title="Show sidebar"><i data-icon="sidebar"></i></button>
             <h1 id="lib-title">All notes</h1>
             <div class="lib-tools">
+              <button id="btn-new-folder" class="icon-btn" title="New notebook (a folder for notes)"><i data-icon="folder"></i></button>
               <button id="btn-sort" class="icon-btn" title="Sort"><i data-icon="sort"></i></button>
               <button id="btn-import" class="icon-btn" title="Import .note / .pdf"><i data-icon="upload"></i></button>
             </div>
@@ -68,6 +69,17 @@
           <p id="lib-drop-hint" class="lib-hint">Drop a <b>.note</b> or <b>.pdf</b> file anywhere to import it.</p>
         </main>
       </section>
+
+      <div id="move-modal" class="modal-overlay hidden">
+        <div class="modal-card pm-card">
+          <div class="modal-header">
+            <div class="modal-title"><i data-icon="folder"></i><h2 id="move-title">Move to</h2></div>
+            <button id="move-close" class="icon-btn" title="Close"><i data-icon="close"></i></button>
+          </div>
+          <div class="modal-body"><div id="move-list" class="move-list"></div></div>
+          <div class="pm-actions"><button id="move-cancel" class="btn">Cancel</button></div>
+        </div>
+      </div>
 
       <!-- ===================== EDITOR ===================== -->
       <section id="view-editor" class="view hidden">

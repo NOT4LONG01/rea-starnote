@@ -7,7 +7,8 @@ import { interpolateStrokePoints, generateRibbonGeometry, renderStrokeToCanvas }
 export interface LibraryItem {
   id: string;
   title: string;
-  kind: "note" | "pdf";
+  kind: "note" | "pdf" | "folder"; // a folder is a notebook: it holds notes and other folders (see folders.ts) and has no bytes
+  parentId?: string; // the folder it is in (unset = top level)
   created: number;
   modified: number;
   trashed: boolean;
@@ -17,6 +18,7 @@ export interface LibraryItem {
   syncId?: string;     // Drive file id
   syncRemote?: string; // Drive modifiedTime at the last sync
   syncLocal?: number;  // local `modified` at the last sync
+  syncParent?: string; // Drive folder it was in at the last sync (a move is a change of parent)
   thumb?: string; // PNG data URL
 }
 

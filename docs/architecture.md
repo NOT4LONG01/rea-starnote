@@ -25,7 +25,7 @@ understand survives a save.
 | `model/pens.ts`, `shapes.ts`, `math.ts` | pen kinds, shape outlines, LaTeX to SVG (MathJax, loaded on first use) |
 | `render/canvas-renderer.ts` | the canvas: pan/zoom, pen, eraser, lasso, shapes, text, undo/redo, page operations; two layers (page canvas + overlay) |
 | `render/pdf-loader.ts`, `pdf-export.ts` | PDF pages to bitmaps (pdf.js); annotated-PDF writer |
-| `data/library.ts`, `sync.ts` | the local note library (IndexedDB); the two-way Drive sync engine |
+| `data/library.ts`, `folders.ts`, `sync.ts` | the local library (IndexedDB; notes, PDFs and notebooks); pure folder helpers (paths, descendants, what can move where); the two-way Drive sync engine (notes and the notebook tree) |
 | `integrations/google-drive.ts`, `zotero.ts`, `net.ts` | Google sign-in (web and desktop PKCE) and Drive REST; Zotero Web API; native-vs-browser `fetch` |
 
 Dependencies point one way: `main.ts` -> `render`, `data`, `integrations` -> `model`; `cli/` -> `model`. `model/` has no UI code, which is why the CLI can reuse it.
