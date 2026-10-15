@@ -238,7 +238,6 @@ as a free-form canvas).
 
 ```json
 { "version": 1,
-  "continuous": true,                                   // notebook: pages join without a gap
   "layout": "canvas", "template": "ruled", "spacing": 52.5,   // infinite canvas: free-form tiles + the page style new tiles get
   "pages": [ { "tag": "Page[0-0]", "w": 2100, "h": 2100, "template": "ruled", "spacing": 52.5 } ] }
 ```

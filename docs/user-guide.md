@@ -7,9 +7,16 @@ Your notes are kept on the device. The library shows a grid with the tabs All / 
 (deleted notes stay there until you empty it). Create a note with **New note** and choose the paper (A4, A5, ...) and template
 (blank, ruled, grid, dots), the line spacing (Narrow, Medium, Wide) and the type:
   - **Pages**: finite pages (A4, A5, Tablet 4:3, ...) one under the other.
-  - **Notebook**: one endless, seamless sheet for a long session. It is as wide as a page can be and a new page appears by itself as you scroll down.
   - **Infinite**: no page edges; write anywhere and pan as far as you like (the paper keeps its ruling the whole way).
-  **Import .note / .pdf** adds a file from the device. Opened notes appear as tabs; the title at
+  **Import .note / .pdf** adds a file from the device.
+
+### Notebooks (folders)
+A **notebook** is a folder for notes. Create one with the folder button or the dashed *Notebook* card. Tap it to open it: the path
+at the top (All notes › Physics › Lab) takes you back up. Notebooks nest, and a note you create or import while a notebook is
+open goes inside it. Move a note or notebook with *Move to…* in its menu, or drag its card onto a notebook card or onto a name
+in the path. The search looks in every notebook. Trashing a notebook trashes what is inside it, and restoring brings it all back.
+On Google Drive each notebook is a sub-folder of the *StarNote* folder, nested the same way, and renames, moves and deletes
+are mirrored in both directions. Opened notes appear as tabs; the title at
 the top lists them.
 
 ## Editor
@@ -36,7 +43,7 @@ on the same item. If a PDF is "not stored", file syncing is off for it in Zotero
 
 ## Exporting
 **More** menu: `.note` (opens again in the app), SVG (vector ink), PDF (pages with your ink on top; for PDF notes the
-original page is underneath; a notebook is cut into A4-shaped pages and its empty tail is left out). On Android, files are saved through the system "Save as" dialog.
+original page is underneath). On Android, files are saved through the system "Save as" dialog.
 
 ## Command line
 The same files can be inspected and converted without the app: [cli.md](cli.md).

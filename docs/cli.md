@@ -19,9 +19,9 @@ npm run cli -- info my.note             # builds, then runs (the -- passes the a
 | `export <file.note> -f svg\|pdf\|json [-o out]` | convert; default output is `<name>.<format>` beside the cwd; `-o -` writes svg/json to stdout |
 | `new -o <file.note> [options]` | create a note (below) |
 
-`new` options: `--kind pages|notebook|infinite` (default pages), `--title T`, `--paper a4|a5|a6|b5|letter|tablet|slide|square`
+`new` options: `--kind pages|infinite` (default pages), `--title T`, `--paper a4|a5|a6|b5|letter|tablet|slide|square`
 (default a4), `--landscape`, `--template blank|ruled|grid|dots` (default ruled), `--spacing narrow|medium|wide` (default medium),
-`--pages N` (1-500, default 1). A notebook is `N` joined 2100-unit pages; an infinite canvas starts as one tile and ignores
+`--pages N` (1-500, default 1). An infinite canvas starts as one tile and ignores
 `--paper`, `--landscape` and `--pages`.
 
 ## Exit codes

@@ -42,12 +42,12 @@ test("new creates a valid note that info reads back", () => {
   assert.ok(i.pageList.every((p) => p.template === "grid" && p.width > p.height));
   assert.equal(run("validate", n).code, 0);
 });
-test("new --kind notebook / infinite, --spacing, and the app's names for templates", () => {
+test("new --kind infinite, --spacing, and the app's names for templates", () => {
   const nb = join(tmp, "nb.note"), inf = join(tmp, "inf.note");
-  assert.equal(run("new", "-o", nb, "--kind", "notebook", "--pages", "3", "--template", "lined", "--spacing", "wide").code, 0);
+  assert.equal(run("new", "-o", nb, "--pages", "3", "--template", "lined", "--spacing", "wide").code, 0);
   const i = JSON.parse(run("info", nb, "--json").out);
-  assert.equal(i.layout, "notebook"); assert.equal(i.pages, 3);
-  assert.ok(i.pageList.every((p) => p.width === 2100 && p.height === 2100 && p.template === "ruled" && p.spacing === 70));
+  assert.equal(i.layout, "pages"); assert.equal(i.pages, 3);
+  assert.ok(i.pageList.every((p) => p.template === "ruled" && p.spacing === 70));
   assert.equal(run("validate", nb).code, 0);
   assert.equal(run("new", "-o", inf, "--kind", "infinite", "--template", "dotted", "--spacing", "narrow").code, 0);
   const j = JSON.parse(run("info", inf, "--json").out);

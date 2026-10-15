@@ -7,7 +7,8 @@ import { interpolateStrokePoints, generateRibbonGeometry, renderStrokeToCanvas }
 export interface LibraryItem {
   id: string;
   title: string;
-  kind: "note" | "pdf";
+  kind: "note" | "pdf" | "folder"; // a folder is a notebook: it holds notes and other folders (see folders.ts) and has no bytes
+  parentId?: string; // the folder it is in (unset = top level)
   created: number;
   modified: number;
   trashed: boolean;
@@ -17,6 +18,7 @@ export interface LibraryItem {
   syncId?: string;     // Drive file id
   syncRemote?: string; // Drive modifiedTime at the last sync
   syncLocal?: number;  // local `modified` at the last sync
+  syncParent?: string; // Drive folder it was in at the last sync (a move is a change of parent)
   thumb?: string; // PNG data URL
 }
 
@@ -130,7 +132,7 @@ export function renderThumbnail(doc: StarNoteDocument, w = 300, h = 400): string
   if (tile?.backgroundImage) {
     ctx.drawImage(tile.backgroundImage, rect.left, rect.top, rw, rh);
   } else {
-    drawPageTemplate(ctx, tile?.template ?? "ruled", rect, { line: "#e3e6ea", dot: "#c5cad1", lineWidth: 3, dotRadius: 5.2 }, tile ? spacingOf(tile) : undefined, !!doc.continuous);
+    drawPageTemplate(ctx, tile?.template ?? "ruled", rect, { line: "#e3e6ea", dot: "#c5cad1", lineWidth: 3, dotRadius: 5.2 }, tile ? spacingOf(tile) : undefined);
   }
 
   if (tile) {

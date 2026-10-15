@@ -599,33 +599,51 @@ export class GoogleDriveService {
       noteId: f.appProperties?.starnoteId,
       kind: f.appProperties?.kind === "pdf" ? "pdf" : "note",
       mime: f.mimeType,
+      parentId: f.parents?.[0],
     };
   }
 
   /** The Remote the sync engine talks to. */
   public syncRemote(): Remote {
-    const FIELDS = "id,name,mimeType,modifiedTime,appProperties";
+    const FIELDS = "id,name,mimeType,modifiedTime,appProperties,parents";
+    const FOLDER = "application/vnd.google-apps.folder";
+    const moveParams = (parentId?: string, fromParentId?: string) =>
+      parentId && fromParentId && parentId !== fromParentId ? `&addParents=${encodeURIComponent(parentId)}&removeParents=${encodeURIComponent(fromParentId)}` : "";
     return {
+      rootId: () => this.syncFolderId(),
+
+      // everything below the root: a breadth-first walk, a layer of folders per round of queries
       list: async () => {
-        const folder = await this.syncFolderId();
         const out: RemoteFile[] = [];
-        let pageToken = "";
-        do {
-          const url = new URL("https://www.googleapis.com/drive/v3/files");
-          url.searchParams.set("q", `'${folder}' in parents and trashed = false`);
-          url.searchParams.set("fields", `nextPageToken,files(${FIELDS})`);
-          url.searchParams.set("pageSize", "200");
-          if (pageToken) url.searchParams.set("pageToken", pageToken);
-          const page = await (await this.driveFetch(url.toString())).json();
-          out.push(...(page.files || []).map((f: any) => this.toRemoteFile(f)));
-          pageToken = page.nextPageToken || "";
-        } while (pageToken);
+        let layer = [await this.syncFolderId()];
+        for (let depth = 0; layer.length && depth < 32; depth++) {
+          const next: string[] = [];
+          for (let i = 0; i < layer.length; i += 20) {
+            const q = `(${layer.slice(i, i + 20).map((id) => `'${id}' in parents`).join(" or ")}) and trashed = false`;
+            let pageToken = "";
+            do {
+              const url = new URL("https://www.googleapis.com/drive/v3/files");
+              url.searchParams.set("q", q);
+              url.searchParams.set("fields", `nextPageToken,files(${FIELDS})`);
+              url.searchParams.set("pageSize", "200");
+              if (pageToken) url.searchParams.set("pageToken", pageToken);
+              const page = await (await this.driveFetch(url.toString())).json();
+              for (const f of page.files || []) {
+                const rf = this.toRemoteFile(f);
+                out.push(rf);
+                if (rf.mime === FOLDER) next.push(rf.id);
+              }
+              pageToken = page.nextPageToken || "";
+            } while (pageToken);
+          }
+          layer = next;
+        }
         return out;
       },
 
-      upload: async ({ name, data, fileId, noteId, kind }) => {
+      upload: async ({ name, data, fileId, noteId, kind, parentId, fromParentId }) => {
         const metadata: Record<string, unknown> = { name, mimeType: "application/octet-stream", appProperties: { starnoteId: noteId, kind } };
-        if (!fileId) metadata.parents = [await this.syncFolderId()];
+        if (!fileId) metadata.parents = [parentId];
         const boundary = "-------StarNoteSync" + Math.random().toString(36).slice(2);
         const enc = new TextEncoder();
         const head = enc.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\n\r\n`);
@@ -635,12 +653,30 @@ export class GoogleDriveService {
         body.set(data, head.length);
         body.set(tail, head.length + data.length);
         const url = fileId
-          ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=${FIELDS}`
+          ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=${FIELDS}${moveParams(parentId, fromParentId)}`
           : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=${FIELDS}`;
         const resp = await this.driveFetch(url, {
           method: fileId ? "PATCH" : "POST",
           headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
           body,
+        });
+        return this.toRemoteFile(await resp.json());
+      },
+
+      createFolder: async ({ name, noteId, parentId }) => {
+        const resp = await this.driveFetch(`https://www.googleapis.com/drive/v3/files?fields=${FIELDS}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, mimeType: FOLDER, parents: [parentId], appProperties: { starnoteId: noteId, kind: "folder" } }),
+        });
+        return this.toRemoteFile(await resp.json());
+      },
+
+      update: async (fileId, { name, parentId, fromParentId }) => {
+        const resp = await this.driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=${FIELDS}${moveParams(parentId, fromParentId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(name === undefined ? {} : { name }),
         });
         return this.toRemoteFile(await resp.json());
       },

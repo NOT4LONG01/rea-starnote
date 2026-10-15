@@ -73,8 +73,6 @@ export interface StarNoteDocument {
   isPdfImport?: boolean;
   /** "stack": finite pages one under the other (managed: add, delete, reorder). Unset: StarNote's free-form canvas of tiles. */
   layout?: "stack";
-  /** A stack whose pages join without a gap, one endless sheet that grows as you write (a notebook). */
-  continuous?: boolean;
   /** An infinite canvas: free-form tiles that appear wherever you write; the page style new tiles get. */
   infinite?: { template: PageTemplate; spacing: number };
   /** Pages deleted since the last save (their files are still in rawZip). */
@@ -330,7 +328,7 @@ async function indexShapesFromZip(zip: JSZip): Promise<ShapeIndexResult> {
  */
 async function applyPageLayout(doc: StarNoteDocument, info: Map<number, string>) {
   const sidecarFile = doc.rawZip?.file(sidecarPath(doc.uuid));
-  let side: { continuous?: boolean; layout?: string; template?: string; spacing?: number; pages?: { tag: string; w: number; h: number; template: string; spacing?: number }[] } | null = null;
+  let side: { layout?: string; template?: string; spacing?: number; pages?: { tag: string; w: number; h: number; template: string; spacing?: number }[] } | null = null;
   if (sidecarFile) { try { side = JSON.parse(await sidecarFile.async("string")); } catch { side = null; } }
   if (!side && !isPageStack([...doc.tiles.keys()])) return; // free-form canvas
   if (side?.layout === "canvas") { // an infinite canvas of ours: tiles stay where they are, the page style is remembered
@@ -365,7 +363,6 @@ async function applyPageLayout(doc: StarNoteDocument, info: Map<number, string>)
   }
   doc.tiles = sorted;
   doc.layout = "stack";
-  if (side?.continuous) doc.continuous = true;
   relayout(doc);
 }
 

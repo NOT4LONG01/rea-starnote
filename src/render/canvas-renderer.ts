@@ -957,7 +957,6 @@ export class CanvasRenderer {
 
   public isStack(): boolean { return this.doc?.layout === "stack"; }
   public isInfinite(): boolean { return !!this.doc?.infinite; }
-  public isContinuous(): boolean { return !!this.doc?.continuous; }
 
   /** Infinite canvas: make sure every grid cell the points touch has a tile (the archive stores ink per tile). */
   private ensureTiles(points: { x: number; y: number }[]) {
@@ -970,45 +969,6 @@ export class CanvasRenderer {
       last = tag;
       if (!doc.tiles.has(tag)) { doc.tiles.set(tag, newCanvasTile(tag, doc.infinite.template, doc.infinite.spacing)); doc.pagesChanged = true; }
     }
-  }
-
-  /**
-   * Notebook: drop the empty pages at the end beyond one spare (they pile up when you scroll fast). Called when a note is
-   * opened or left, never while you scroll (the notebook would just grow them back).
-   */
-  public trimNotebookTail() {
-    const d = this.doc;
-    if (!d?.continuous || d.layout !== "stack") return;
-    const empty = (t: ParsedTile) => {
-      const r = t.pageRect ?? t.rect;
-      return !t.strokes.length && !t.textBoxes?.length && !(d.addedTextBoxes ?? []).some((b) => b.tag === t.pageTag)
-        && !this.userDrawnStrokes.some((st) => st.points.some((p) => p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom));
-    };
-    let trimmed = false;
-    for (;;) {
-      const tiles = [...d.tiles.values()];
-      if (tiles.length <= 2 || !empty(tiles[tiles.length - 1]) || !empty(tiles[tiles.length - 2])) break;
-      const last = tiles[tiles.length - 1];
-      if (last.saved !== false) (d.removedPages ??= []).push(last.pageTag);
-      d.tiles.delete(last.pageTag);
-      trimmed = true;
-    }
-    if (trimmed) this.restack();
-  }
-
-  private growing = false;
-  /** Notebook: when the view nears the end of the last page, another page is added: the sheet never runs out. */
-  private maybeGrowNotebook() {
-    const d = this.doc;
-    if (!d?.continuous || d.layout !== "stack" || this.growing || this.canvas.height === 0) return;
-    const last = [...d.tiles.values()].pop();
-    if (!last?.pageRect) return;
-    if ((this.canvas.height - this.panY) / this.zoom < last.pageRect.bottom - 700) return;
-    this.growing = true;
-    queueMicrotask(() => {
-      this.addPage({ w: 2100, h: 2100, template: last.template ?? "ruled", spacing: spacingOf(last) }, undefined, true);
-      this.growing = false;
-    });
   }
 
   private stackTiles(): ParsedTile[] { return this.doc ? [...this.doc.tiles.values()] : []; }
@@ -1051,7 +1011,7 @@ export class CanvasRenderer {
   }
 
   /** Inserts a page after `after` (the end by default) and shows it. Returns its index. */
-  public addPage(format: PageFormat, after?: number, silent = false): number {
+  public addPage(format: PageFormat, after?: number): number {
     if (!this.doc) return -1;
     const doc = this.doc;
     doc.layout = "stack";
@@ -1061,7 +1021,7 @@ export class CanvasRenderer {
     entries.splice(at, 0, [tag, newPageTile(tag, format)]);
     doc.tiles = new Map(entries);
     this.restack();
-    if (!silent) this.fit("page", doc.tiles.get(tag)!.pageRect);
+    this.fit("page", doc.tiles.get(tag)!.pageRect);
     return at;
   }
 
@@ -1114,7 +1074,7 @@ export class CanvasRenderer {
   /** True when the end of the last page is on screen: the moment to offer "add page". */
   public endOfNoteVisible(): boolean {
     const tiles = this.stackTiles();
-    if (tiles.length === 0 || this.canvas.height === 0 || this.doc?.continuous) return false; // a notebook grows by itself
+    if (tiles.length === 0 || this.canvas.height === 0) return false;
     const last = tiles[tiles.length - 1].pageRect!;
     return last.bottom * this.zoom + this.panY <= this.canvas.height - 4;
   }
@@ -1596,7 +1556,6 @@ export class CanvasRenderer {
   private draw() {
     if (this.canvas.width === 0 || this.canvas.height === 0) return; // the editor is hidden
     this.clampPan();
-    this.maybeGrowNotebook();
     if (!this.slideScene()) this.paintScene();
 
     this.drawOverlay();
@@ -1710,9 +1669,8 @@ export class CanvasRenderer {
 
     // Tile Page background (a PDF page keeps its own aspect inside the tile)
     const pr = tile.pageRect ?? tile.rect;
-    const joined = !!this.doc?.continuous; // notebook: pages meet without a shadow or an outline
     ctx.fillStyle = "#ffffff";
-    if (!this.eInkMode && !joined) {
+    if (!this.eInkMode) {
       ctx.shadowColor = "rgba(0,0,0,0.4)";
       ctx.shadowBlur = 15;
     }
@@ -1723,15 +1681,13 @@ export class CanvasRenderer {
     if (tile.backgroundImage) {
       ctx.drawImage(tile.backgroundImage, pr.left, pr.top, pr.right - pr.left, pr.bottom - pr.top);
     } else {
-      this.drawTemplate(tile.template ?? "ruled", pr, spacingOf(tile), joined);
+      this.drawTemplate(tile.template ?? "ruled", pr, spacingOf(tile));
     }
 
     // Tile Boundary outline
-    if (!joined) {
-      ctx.strokeStyle = this.eInkMode ? "#000000" : "#e2e8f0";
-      ctx.lineWidth = this.eInkMode ? 2.0 / this.zoom : 1.0 / this.zoom;
-      ctx.strokeRect(pr.left, pr.top, pr.right - pr.left, pr.bottom - pr.top);
-    }
+    ctx.strokeStyle = this.eInkMode ? "#000000" : "#e2e8f0";
+    ctx.lineWidth = this.eInkMode ? 2.0 / this.zoom : 1.0 / this.zoom;
+    ctx.strokeRect(pr.left, pr.top, pr.right - pr.left, pr.bottom - pr.top);
     this.renderTileInk(tile, true);
   }
 
