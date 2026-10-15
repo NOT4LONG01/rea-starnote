@@ -21,5 +21,5 @@ patch. The version lives in `package.json` and `src-tauri/Cargo.toml` (keep them
 Cargo.toml). Tag releases `v0.N.P` on `main` and add them to [CHANGELOG.md](../CHANGELOG.md).
 
 ## QA bundles
-A retest bundle is a zip of the repo without `node_modules`, `dist`, `dist-cli`, `src-tauri/target`, `artifacts` and
-`qa/reports`, `artifacts`, named `rea-starnote-qa-N.zip`, with a matching `qa/RETEST_N.md`. A signed APK ships alongside it.
+Built from tracked files only (`git archive`) into `artifacts/rea-starnote-qa-N.zip`, with a matching `qa/RETEST_N.md`; the
+full recipe is in [../CLAUDE.md](../CLAUDE.md).

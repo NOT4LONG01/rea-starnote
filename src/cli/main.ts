@@ -36,11 +36,10 @@ class UsageError extends Error {}
 const out = (s: string) => process.stdout.write(s.endsWith("\n") ? s : s + "\n");
 const warn = (s: string) => process.stderr.write(s + "\n");
 
-async function load(file: string | undefined): Promise<{ doc: StarNoteDocument; bytes: Buffer }> {
+async function load(file: string | undefined): Promise<StarNoteDocument> {
   if (!file) throw new UsageError("missing <file.note>");
   const bytes = await readFile(file);
-  const doc = await loadStarNoteArchive(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-  return { doc, bytes };
+  return loadStarNoteArchive(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
 }
 
 const pagesOf = (doc: StarNoteDocument) =>
@@ -52,13 +51,10 @@ const pagesOf = (doc: StarNoteDocument) =>
     template: t.template ?? "ruled",
     strokes: t.strokes.length,
     textBoxes: t.textBoxes?.length ?? 0,
-    hasBackground: false,
   }));
 
 async function cmdInfo(file: string | undefined, json: boolean) {
-  const { doc, bytes } = await load(file);
-  const zip = await JSZip.loadAsync(bytes);
-  const backgrounds = Object.keys(zip.files).filter((n) => /\/resource\/image\/Page\[[^\]]+\]\.png$/.test(n));
+  const doc = await load(file);
   const pages = pagesOf(doc);
   const info = {
     title: doc.title,
@@ -67,31 +63,29 @@ async function cmdInfo(file: string | undefined, json: boolean) {
     pages: pages.length,
     strokes: pages.reduce((n, p) => n + p.strokes, 0),
     textBoxes: pages.reduce((n, p) => n + p.textBoxes, 0),
-    pageBackgrounds: backgrounds.length,
-    archiveEntries: Object.values(zip.files).filter((f) => !f.dir).length,
-    pageList: pages.map(({ hasBackground: _h, ...p }) => p),
+    pageList: pages,
   };
   if (json) return out(JSON.stringify(info, null, 2));
   out(`${info.title}  (${info.layout})`);
   out(`id ${info.id}`);
-  out(`${info.pages} page${info.pages === 1 ? "" : "s"}, ${info.strokes} stroke${info.strokes === 1 ? "" : "s"}, ${info.textBoxes} text box${info.textBoxes === 1 ? "" : "es"}, ${info.pageBackgrounds} page background${info.pageBackgrounds === 1 ? "" : "s"}, ${info.archiveEntries} files in the archive`);
+  out(`pages: ${info.pages}, strokes: ${info.strokes}, text boxes: ${info.textBoxes}`);
   for (const p of info.pageList) if (p.strokes || p.textBoxes || info.pages <= 30) out(`  ${String(p.page).padStart(3)}  ${p.tag.padEnd(14)} ${p.width}x${p.height}  ${p.template.padEnd(6)}  ${p.strokes} strokes, ${p.textBoxes} text`);
 }
 
 async function cmdText(file: string | undefined, json: boolean) {
-  const { doc } = await load(file);
+  const doc = await load(file);
   const boxes = [...doc.tiles.values()].flatMap((t, i) => (t.textBoxes ?? []).map((b) => ({ page: i + 1, text: b.text, math: /^\$\$[\s\S]*\$\$$/.test(b.text.trim()) })));
   if (json) return out(JSON.stringify(boxes, null, 2));
   if (!boxes.length) return out("(no text boxes)");
   for (const b of boxes) out(`[page ${b.page}]${b.math ? " (LaTeX)" : ""} ${b.text.replace(/\n/g, "\n          ")}`);
 }
 
-async function cmdValidate(file: string | undefined) {
+async function cmdValidate(file: string | undefined): Promise<number> {
   if (!file) throw new UsageError("missing <file.note>");
   const problems: string[] = [];
   const bytes = await readFile(file);
   let zip: JSZip;
-  try { zip = await JSZip.loadAsync(bytes); } catch (e: any) { out(`FAIL  not a readable ZIP archive: ${e.message}`); process.exitCode = 1; return; }
+  try { zip = await JSZip.loadAsync(bytes); } catch (e: any) { out(`FAIL  not a readable ZIP archive: ${e.message}`); return 1; }
   const names = Object.keys(zip.files).filter((n) => !zip.files[n].dir);
   if (!names.some((n) => n.endsWith("/note/pb/note_info"))) problems.push("note/pb/note_info is missing");
   let points = 0, segments = 0, shapeFiles = 0;
@@ -116,11 +110,11 @@ async function cmdValidate(file: string | undefined) {
   try { await loadStarNoteArchive(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer); } catch (e: any) { problems.push(`the note does not load: ${e.message}`); }
   out(`${problems.length ? "FAIL" : "OK  "}  ${names.length} files, ${points} point streams (${segments} segments), ${shapeFiles} shape files`);
   for (const p of problems) out(`  - ${p}`);
-  if (problems.length) process.exitCode = 1;
+  return problems.length ? 1 : 0;
 }
 
 async function cmdExport(file: string | undefined, format: string | undefined, output: string | undefined) {
-  const { doc } = await load(file);
+  const doc = await load(file);
   const fmt = (format ?? "").toLowerCase();
   if (!["svg", "pdf", "json"].includes(fmt)) throw new UsageError("export needs --format svg, pdf or json");
   const target = output ?? `${basename(file!, extname(file!))}.${fmt}`;
@@ -136,7 +130,7 @@ async function cmdExport(file: string | undefined, format: string | undefined, o
   warn(`wrote ${target}`);
 }
 
-async function cmdNew(values: Record<string, any>) {
+async function cmdNew(values: { output?: string; title?: string; paper?: string; landscape?: boolean; template?: string; pages?: string }) {
   if (!values.output) throw new UsageError("new needs -o <file.note>");
   const paper = String(values.paper ?? "a4");
   if (!PAPERS.some((p) => p.id === paper)) throw new UsageError(`unknown paper "${paper}" (${PAPERS.map((p) => p.id).join(", ")})`);
@@ -151,7 +145,7 @@ async function cmdNew(values: Record<string, any>) {
   warn(`wrote ${values.output} (${count} page${count === 1 ? "" : "s"}, ${paper.toUpperCase()}${values.landscape ? " landscape" : ""}, ${template})`);
 }
 
-export async function main(argv: string[]): Promise<number> {
+async function main(argv: string[]): Promise<number> {
   try {
     const { values, positionals } = parseArgs({
       args: argv,
@@ -168,12 +162,12 @@ export async function main(argv: string[]): Promise<number> {
     switch (command) {
       case "info": await cmdInfo(file, !!values.json); break;
       case "text": await cmdText(file, !!values.json); break;
-      case "validate": await cmdValidate(file); break;
+      case "validate": return await cmdValidate(file);
       case "export": await cmdExport(file, values.format, values.output); break;
       case "new": await cmdNew(values); break;
       default: throw new UsageError(`unknown command "${command}"`);
     }
-    return Number(process.exitCode ?? 0);
+    return 0;
   } catch (e: any) {
     if (e instanceof UsageError || e?.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION") { warn(`rea-starnote: ${e.message}\nTry: rea-starnote --help`); return 2; }
     if (e?.code === "ENOENT") { warn(`rea-starnote: no such file: ${e.path}`); return 1; }
