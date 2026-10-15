@@ -33,8 +33,5 @@
   "description": "rea-starnote: viewer, editor and sync client for StarNote (.note) files (web, desktop, Android)",
   "engines": {
     "node": ">=20"
-  },
-  "bin": {
-    "rea-starnote": "dist-cli/rea-starnote.mjs"
   }
 }

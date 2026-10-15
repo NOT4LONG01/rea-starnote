@@ -8,7 +8,6 @@ runs the same loader, serializer and PDF writer as the apps. Needs Node 20 or ne
 npm run build:cli                       # writes dist-cli/rea-starnote.mjs (one file, runnable with node)
 node dist-cli/rea-starnote.mjs --help
 npm run cli -- info my.note             # builds, then runs (the -- passes the arguments on)
-npm link                                # optional: puts `rea-starnote` on your PATH
 ```
 
 ## Commands
@@ -29,7 +28,7 @@ argument). Messages go to stderr; data goes to stdout, so `export -o -` and `--j
 
 ## Examples
 ```
-rea-starnote info lecture.note
+node dist-cli/rea-starnote.mjs info lecture.note   # below: shortened to rea-starnote (alias it, or use npm run cli --)
 rea-starnote text lecture.note --json | jq '.[].text'
 rea-starnote export lecture.note -f pdf -o lecture.pdf
 rea-starnote new -o weekly.note --paper a5 --landscape --template grid --pages 7 --title "Week 42"
