@@ -139,7 +139,7 @@ export async function exportAnnotatedPdf(doc: StarNoteDocument, title: string, o
   beginObj(1); text("<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
   beginObj(2); text(`<< /Type /Pages /Count ${pages.length} /Kids [${layout.map((l) => `${l.page} 0 R`).join(" ")}] >>\nendobj\n`);
   beginObj(3); text("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n");
-  beginObj(4); text(`<< /Title (${pdfString(title)}) /Producer (StarNote Interop) >>\nendobj\n`);
+  beginObj(4); text(`<< /Title (${pdfString(title)}) /Producer (rea-starnote) >>\nendobj\n`);
 
   for (let i = 0; i < pages.length; i++) {
     const tile = pages[i];

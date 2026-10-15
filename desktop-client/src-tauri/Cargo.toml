@@ -1,7 +1,7 @@
 [package]
 name = "starnote-desktop"
 version = "0.1.0"
-description = "StarNote Clean-Room Interoperability Viewer and Editor"
+description = "rea-starnote: clean-room viewer and editor for StarNote files"
 edition = "2021"
 
 [lib]

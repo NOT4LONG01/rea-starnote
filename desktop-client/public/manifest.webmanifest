@@ -1,6 +1,6 @@
 {
-  "name": "StarNote Cross-Platform",
-  "short_name": "StarNote",
+  "name": "rea-starnote",
+  "short_name": "rea-starnote",
   "description": "Clean-room viewer and editor for StarNote files with Google Drive sync on Windows, Linux, and Android",
   "start_url": "./",
   "scope": "./",

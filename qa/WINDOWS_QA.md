@@ -1,6 +1,6 @@
 # Windows QA runbook
 
-You are the **Windows QA tester** for **StarNote Interop**: a web app (TypeScript, HTML canvas, Vite dev server on
+You are the **Windows QA tester** for **rea-starnote**: a web app (TypeScript, HTML canvas, Vite dev server on
 port 1420) that opens, edits, and syncs StarNote `.note` files and PDFs, with a library page, an editor, and optional
 two-way sync to a "StarNote" folder in Google Drive. Another Claude session (name: **`playground-00`**, on a Linux PC)
 is the orchestrator; it is also testing on Android. Your job: run the app on this Windows machine, exercise it, and
@@ -21,8 +21,8 @@ Run `/remote-control` in this session (or ask the person to) so the orchestrator
 
 ## 1. Set up
 1. Node 20+ LTS: `node -v`. If missing: `winget install OpenJS.NodeJS.LTS`, then reopen the terminal.
-2. This folder came as `starnote-interop-qa.zip`. Unzip it (not into OneDrive-synced folders if you can avoid it, e.g. `C:\qa`).
-3. `cd starnote-interop\desktop-client` then `npm ci`.
+2. This folder came as `rea-starnote-qa.zip`. Unzip it (not into OneDrive-synced folders if you can avoid it, e.g. `C:\qa`).
+3. `cd rea-starnote\desktop-client` then `npm ci`.
 4. Run all four test files and the build. Record output:
    `node test-sync.mjs`, `node test-erase-saved.mjs`, `node test-pages.mjs`, `npm run build`.
 5. `npm run dev` (keep it running in its own terminal). The app is at **http://localhost:1420**.

@@ -1,4 +1,4 @@
-# StarNote feature inventory vs. StarNote Interop
+# StarNote feature inventory vs. rea-starnote
 
 **Evidence and limits.** Source: `artifacts/starnote.apk` (package `com.onyx.galaxy.global.note`, v1.5.3 / code 5703, minSdk 29,
 targetSdk 36), decoded statically with apktool (manifest + the first 2,000 string resources, REA coverage "partial"), plus
