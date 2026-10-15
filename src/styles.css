@@ -400,6 +400,13 @@ body.eink-mode .sb-thumb { background: #000; }
 }
 .te-head { display: flex; flex-direction: column; gap: 2px; }
 .te-sub { font-size: 12px; color: var(--muted); }
+@media (max-height: 520px) { /* a phone in landscape with the keyboard up leaves ~180px: keep the panel to code + one row of snippets */
+  .text-editor { padding: 6px; gap: 4px; }
+  .te-sub { display: none; }
+  .text-editor textarea { min-height: 44px; }
+  .te-snips { flex-wrap: nowrap; overflow-x: auto; flex: 0 0 auto; }
+  .te-snips button { flex: 0 0 auto; }
+}
 @media (max-width: 640px) {
   .text-editor { top: auto; left: 0; width: auto; max-height: 48%; border-left: 0; border-top: 1px solid #4a4a4a; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35); }
 }

@@ -481,10 +481,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /** Writes the note (including strokes drawn since the last save) into the library. */
-  function saveSession(s: Session): Promise<void> {
-    if (s === active) commitInline(); // text still being typed goes in first
+  /** `auto`: the background save leaves text/formula that is still being typed alone (it saves what is already committed). */
+  function saveSession(s: Session, auto = false): Promise<void> {
+    if (s === active && !auto) commitInline(); // text still being typed goes in first
     const p = (s.saving ?? Promise.resolve()).then(async () => {
-      if (s === active && te.open) await commitTextEditor(true);
+      if (s === active && te.open && !auto) await commitTextEditor(true);
       const pending = [...pendingStrokes(s)];
       const erased = [...erasedSaved(s)];
       if (s.isNew && pending.length === 0 && !textChanged(s) && !pagesChanged(s)) return; // untouched new note: nothing to keep
@@ -569,8 +570,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     clearTimeout(autosaveTimer);
     autosaveTimer = window.setTimeout(() => {
       if (!active || !isDirty(active)) return;
-      if (renderer.isBusy() || renderer.hasSelection() || inl.on || te.open) { scheduleAutosave(); return; } // not in the middle of a gesture or with a selection held
-      void saveSession(active);
+      if (renderer.isBusy() || renderer.hasSelection()) { scheduleAutosave(); return; } // not in the middle of a gesture or with a selection held
+      void saveSession(active, true);
     }, AUTOSAVE_MS);
   }
   renderer.onChange = () => {
@@ -1100,13 +1101,25 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderer.onTextRequest = async (req) => {
     if (inl.on || te.open) {
       const r = renderer.textDraftRect();
-      if (r && req.x >= r.l && req.x <= r.r && req.y >= r.t && req.y <= r.b) { (te.open ? te.input : ghost).focus({ preventScroll: true }); return; } // tap on what is being edited: keep editing
+      if (r && req.x >= r.l && req.x <= r.r && req.y >= r.t && req.y <= r.b) { const f = te.open ? te.input : ghost; f.blur(); f.focus({ preventScroll: true }); return; } // tap on what is being edited: keep editing
       commitInline();
       if (!(await commitTextEditor())) return; // a formula with an error stays open
     }
     if (inl.pendingMath || (req.box && isMathText(req.box.text))) { inl.pendingMath = false; openTextEditor(req); return; }
     openInline(req);
   };
+  // the soft keyboard (Android) shrinks the view: keep what is being edited on screen
+  let revealTimer = 0;
+  window.addEventListener("resize", () => {
+    if (!inl.on && !te.open) return;
+    clearTimeout(revealTimer);
+    revealTimer = window.setTimeout(() => {
+      const r = renderer.textDraftRect();
+      if (!r) return;
+      const panel = te.open ? te.el.getBoundingClientRect() : null, sheet = !!panel && te.el.offsetWidth >= $("canvas-container").clientWidth - 2;
+      renderer.revealRect(r, { right: panel && !sheet ? panel.width : 0, bottom: panel && sheet ? panel.height : 0 });
+    }, 200);
+  });
   ghost.addEventListener("input", syncDraft);
   ghost.addEventListener("keyup", syncDraft);
   ghost.addEventListener("click", syncDraft);
@@ -1238,7 +1251,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         e.preventDefault();
         try {
           park();
-          await Promise.race([Promise.all(sessions.filter(isDirty).map(saveSession)), new Promise((r) => setTimeout(r, 5000))]);
+          await Promise.race([Promise.all(sessions.filter(isDirty).map((x) => saveSession(x))), new Promise((r) => setTimeout(r, 5000))]);
         } finally { await win.destroy(); }
       });
     });
