@@ -1,6 +1,6 @@
-import { StarNoteDocument, ParsedTile } from "./note-loader";
-import { drawPageTemplate } from "./pages";
-import { interpolateStrokePoints, generateRibbonGeometry, renderStrokeToCanvas } from "./stroke-interpolator";
+import { StarNoteDocument, ParsedTile } from "../model/note-loader";
+import { drawPageTemplate } from "../model/pages";
+import { interpolateStrokePoints, generateRibbonGeometry, renderStrokeToCanvas } from "../model/stroke-interpolator";
 
 /** Metadata shown in the library grid. The .note bytes live in a separate store so listing stays cheap. */
 export interface LibraryItem {

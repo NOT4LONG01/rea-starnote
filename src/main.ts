@@ -1,17 +1,17 @@
-import { PEN_KINDS, PenType, penById, penFor } from "./pens";
-import { SHAPE_KINDS, ShapeKind } from "./shapes";
-import { isMathText, latexOf, wrapLatex, renderMath } from "./math";
-import { PAPERS, TEMPLATES, DEFAULT_FORMAT, PageFormat, PageTemplate, newPageTile, relayout, pageFormat, paperOf } from "./pages";
-import { CanvasRenderer, ViewSnapshot } from "./canvas-renderer";
-import { loadStarNoteArchive, StarNoteDocument, ParsedTextBox } from "./note-loader";
-import { exportStarNoteArchive, exportCanvasAsSvg } from "./note-serializer";
-import { GoogleDriveService, GoogleDriveFile } from "./google-drive";
-import { loadPdfDocument, convertPdfToStarNoteDocument } from "./pdf-loader";
-import { library, renderThumbnail, LibraryItem } from "./library";
-import { isDesktopApp } from "./net";
-import { syncLibrary } from "./sync";
-import { ZoteroClient, ZoteroItem, ZoteroPdf, ZoteroCollection } from "./zotero";
-import { exportAnnotatedPdf, safeFileName } from "./pdf-export";
+import { PEN_KINDS, PenType, penById, penFor } from "./model/pens";
+import { SHAPE_KINDS, ShapeKind } from "./model/shapes";
+import { isMathText, latexOf, wrapLatex, renderMath } from "./model/math";
+import { PAPERS, TEMPLATES, DEFAULT_FORMAT, PageFormat, PageTemplate, newPageTile, relayout, pageFormat, paperOf } from "./model/pages";
+import { CanvasRenderer, ViewSnapshot } from "./render/canvas-renderer";
+import { loadStarNoteArchive, StarNoteDocument, ParsedTextBox } from "./model/note-loader";
+import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serializer";
+import { GoogleDriveService, GoogleDriveFile } from "./integrations/google-drive";
+import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
+import { library, renderThumbnail, LibraryItem } from "./data/library";
+import { isDesktopApp } from "./integrations/net";
+import { syncLibrary } from "./data/sync";
+import { ZoteroClient, ZoteroItem, ZoteroPdf, ZoteroCollection } from "./integrations/zotero";
+import { exportAnnotatedPdf, safeFileName } from "./render/pdf-export";
 
 // ---------------------------------------------------------------- icons
 const ICONS: Record<string, string> = {

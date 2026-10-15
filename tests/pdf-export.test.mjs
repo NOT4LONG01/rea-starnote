@@ -1,4 +1,4 @@
-// Tests the REAL src/pdf-export.ts: builds a PDF from a synthetic note, then validates it with independent tools
+// Tests the REAL src/render/pdf-export.ts: builds a PDF from a synthetic note, then validates it with independent tools
 // (pdfinfo, pdftoppm, pdftotext, ghostscript) and checks actual rendered pixels. Run: node test-pdf-export.mjs
 import { build } from "esbuild";
 import { mkdtempSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tmp = mkdtempSync(join(tmpdir(), "sn-pdf-"));
-writeFileSync(join(tmp, "entry.ts"), `export * from ${JSON.stringify(join(here, "src/pdf-export.ts"))};`);
+writeFileSync(join(tmp, "entry.ts"), `export * from ${JSON.stringify(join(here, "../src/render/pdf-export.ts"))};`);
 await build({ entryPoints: [join(tmp, "entry.ts")], bundle: true, platform: "node", format: "esm", outfile: join(tmp, "bundle.mjs"), logLevel: "error" });
 const { exportAnnotatedPdf, safeFileName } = await import(pathToFileURL(join(tmp, "bundle.mjs")).href);
 

@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "node tests/run-all.mjs",
+    "check": "npm run typecheck && npm test && npm run build",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -21,5 +24,9 @@
     "@tauri-apps/cli": "^2.0.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.9"
+  },
+  "description": "rea-starnote: viewer, editor and sync client for StarNote (.note) files (web, desktop, Android)",
+  "engines": {
+    "node": ">=20"
   }
 }

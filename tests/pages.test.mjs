@@ -10,10 +10,10 @@ import assert from "node:assert/strict";
 const here = dirname(fileURLToPath(import.meta.url));
 const tmp = mkdtempSync(join(tmpdir(), "sn-pages-"));
 writeFileSync(join(tmp, "entry.ts"), `
-export * from ${JSON.stringify(join(here, "src/note-loader.ts"))};
-export * from ${JSON.stringify(join(here, "src/note-serializer.ts"))};
-export * from ${JSON.stringify(join(here, "src/pages.ts"))};
-export { default as JSZip } from ${JSON.stringify(join(here, "node_modules/jszip"))};`);
+export * from ${JSON.stringify(join(here, "../src/model/note-loader.ts"))};
+export * from ${JSON.stringify(join(here, "../src/model/note-serializer.ts"))};
+export * from ${JSON.stringify(join(here, "../src/model/pages.ts"))};
+export { default as JSZip } from ${JSON.stringify(join(here, "../node_modules/jszip"))};`);
 await build({ entryPoints: [join(tmp, "entry.ts")], bundle: true, platform: "node", format: "esm", outfile: join(tmp, "bundle.mjs"), logLevel: "error" });
 const m = await import(pathToFileURL(join(tmp, "bundle.mjs")).href);
 const { loadStarNoteArchive, exportStarNoteArchive, newPageTile, relayout, nextPageTag, pageFormat, PAGE_GAP, isPageStack, JSZip } = m;
@@ -112,7 +112,7 @@ await test("deleting a page removes its ink, text, shapes, template and page rec
 });
 
 await test("a real free-form StarNote canvas (the sample) is left as it is: not a stack, geometry from the tags", async () => {
-  const b = readFileSync(join(here, "../samples/test.note"));
+  const b = readFileSync(join(here, "../public/samples/test.note"));
   const doc = await loadStarNoteArchive(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
   assert.equal(doc.layout, undefined);
   const t = doc.tiles.get("Page[-5--1]");

@@ -1,4 +1,4 @@
-// Tests the REAL desktop sign-in code in src/google-drive.ts (system-browser PKCE flow, refresh tokens) with fakes for
+// Tests the REAL desktop sign-in code in src/integrations/google-drive.ts (system-browser PKCE flow, refresh tokens) with fakes for
 // the native side (loopback listener, opening the browser) and for Google. Run: node test-desktop-oauth.mjs
 import { build } from "esbuild";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -18,7 +18,7 @@ export const netFetch = (u: any, i?: any) => S().fetch(u, i);
 export const openInBrowser = (u: string) => S().open(u);
 export const nativeInvoke = (c: string, a?: any) => S().invoke(c, a);
 `);
-writeFileSync(join(out, "entry.ts"), `export { GoogleDriveService } from ${JSON.stringify(join(here, "src/google-drive.ts"))};`);
+writeFileSync(join(out, "entry.ts"), `export { GoogleDriveService } from ${JSON.stringify(join(here, "../src/integrations/google-drive.ts"))};`);
 await build({
   entryPoints: [join(out, "entry.ts")], bundle: true, platform: "node", format: "esm", outfile: join(out, "bundle.mjs"), logLevel: "error",
   plugins: [{ name: "net-stub", setup(b) { b.onResolve({ filter: /^\.\/net$/ }, () => ({ path: join(out, "net-stub.ts") })); } }],

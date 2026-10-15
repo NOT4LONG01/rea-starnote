@@ -1,6 +1,6 @@
-import type { StarNoteDocument, ParsedTile, ParsedStroke } from "./note-loader";
-import { interpolateStrokePoints, generateRibbonGeometry } from "./stroke-interpolator";
-import { TEMPLATE_SPACING } from "./pages";
+import type { StarNoteDocument, ParsedTile, ParsedStroke } from "../model/note-loader";
+import { interpolateStrokePoints, generateRibbonGeometry } from "../model/stroke-interpolator";
+import { TEMPLATE_SPACING } from "../model/pages";
 
 /**
  * Annotated-PDF export: one PDF page per note page. The page background (a PDF page image or ruled paper) is drawn first,

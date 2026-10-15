@@ -11,17 +11,17 @@ import assert from "node:assert/strict";
 const here = dirname(fileURLToPath(import.meta.url));
 const tmp = mkdtempSync(join(tmpdir(), "sn-erase-"));
 writeFileSync(join(tmp, "entry.ts"), `
-export * from ${JSON.stringify(join(here, "src/note-loader.ts"))};
-export * from ${JSON.stringify(join(here, "src/note-serializer.ts"))};
-export * from ${JSON.stringify(join(here, "src/stroke-interpolator.ts"))};
-export { default as JSZip } from ${JSON.stringify(join(here, "node_modules/jszip"))};`);
+export * from ${JSON.stringify(join(here, "../src/model/note-loader.ts"))};
+export * from ${JSON.stringify(join(here, "../src/model/note-serializer.ts"))};
+export * from ${JSON.stringify(join(here, "../src/model/stroke-interpolator.ts"))};
+export { default as JSZip } from ${JSON.stringify(join(here, "../node_modules/jszip"))};`);
 await build({ entryPoints: [join(tmp, "entry.ts")], bundle: true, platform: "node", format: "esm", outfile: join(tmp, "bundle.mjs"), logLevel: "error" });
 const m = await import(pathToFileURL(join(tmp, "bundle.mjs")).href);
 const { loadStarNoteArchive, exportStarNoteArchive, dropShapeRecords, parseStarNotePointsBinary, serializeStarNotePointsMultiSegment, JSZip } = m;
 
 let passed = 0;
 const test = async (name, fn) => { await fn(); passed++; console.log(`  ok  ${name}`); };
-const sample = readFileSync(join(here, "../samples/test.note"));
+const sample = readFileSync(join(here, "../public/samples/test.note"));
 const load = () => loadStarNoteArchive(sample.buffer.slice(sample.byteOffset, sample.byteOffset + sample.byteLength));
 const dump = async (zip) => { // every file, with the shape zips opened up so records can be compared
   const out = new Map();

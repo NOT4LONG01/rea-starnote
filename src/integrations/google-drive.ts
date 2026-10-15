@@ -3,7 +3,7 @@
  * Cross-platform support for Windows, Linux, Android, and Web.
  */
 
-import type { Remote, RemoteFile } from "./sync";
+import type { Remote, RemoteFile } from "../data/sync";
 import { isDesktopApp, netFetch, openInBrowser, nativeInvoke } from "./net";
 
 export interface GoogleDriveUser {

@@ -10,12 +10,11 @@ dialog (the WebView ignores in-page downloads, so `MainActivity.kt` exposes `win
 - Android SDK: command-line tools -> `sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;27.0.12077973"`
   (installing also asks to accept the Android SDK licenses).
 - Rust targets: `rustup target add aarch64-linux-android x86_64-linux-android`.
-- `npx tauri android init` was already run; the project lives in `desktop-client/src-tauri/gen/android` (kept in git).
+- `npx tauri android init` was already run; the project lives in `src-tauri/gen/android` (kept in git).
 
 ## Build
 ```
 export ANDROID_HOME=$HOME/Android/Sdk NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973 JAVA_HOME=$HOME/Android/jdk-17
-cd desktop-client
 npx tauri android build --debug --apk --target x86_64    # for the Waydroid emulator
 npx tauri android build --apk --target aarch64           # for a phone (release, unsigned)
 ```

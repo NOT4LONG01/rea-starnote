@@ -13,23 +13,23 @@ You may write files under `rea-starnote/qa/reports/` only.
 - Report what you observed. Mark anything you inferred or could not verify as such. Never write PASS without evidence.
 
 ## Paths
-- Repo: `/home/not4long/Desktop/playground/rea-starnote`; web app: `desktop-client/` (`npm run dev` serves :1420).
-- Sample files: `samples/test.note` (real StarNote note, 12 tiles, 4 strokes, text `HELLO_INTEROP_TEST`), `desktop-client/public/samples/sample.pdf`.
+- Repo: `/home/not4long/Desktop/playground/rea-starnote`; web app: the repo root (`npm run dev` serves :1420).
+- Sample files: `public/samples/test.note` (real StarNote note, 12 tiles, 4 strokes, text `HELLO_INTEROP_TEST`), `public/samples/sample.pdf`.
 - Real StarNote Android app: `artifacts/starnote.apk` (453 MB, **ARM-only**: arm64-v8a + armeabi-v7a).
 - Scratch for screenshots/logs: use the scratchpad directory you were given.
 
 ## Phase 0 - bring Android up
-1. `bash qa/waydroid-up.sh` (starts a weston window + Waydroid session, `adb connect`, `adb reverse tcp:1420 tcp:1420`).
+1. `bash scripts/waydroid-up.sh` (starts a weston window + Waydroid session, `adb connect`, `adb reverse tcp:1420 tcp:1420`).
    It prints `ANDROID_SERIAL=<ip>:5555` - use `adb -s <serial>` for everything.
 2. Confirm: `adb devices`, `adb shell getprop ro.build.version.release`, `adb shell wm size`, ABI list.
-3. Host dev server: `curl -sI localhost:1420`. If down, start `npm run dev` in `desktop-client/` in the background and remember its PID.
+3. Host dev server: `curl -sI localhost:1420`. If down, start `npm run dev` in the repo root in the background and remember its PID.
 4. Screenshots: `adb exec-out screencap -p > file.png` then Read the PNG to look at it. UI coordinates: `adb shell uiautomator dump` (read the XML) or the screenshot.
 
 ## Phase 1 - a browser
 No Google Play, so sideload Firefox for Android (x86_64 build): find the latest at
 `https://archive.mozilla.org/pub/fenix/releases/` (folder `<version>/android/fenix-<version>-android-x86_64/`), `adb install` it.
 Because of `adb reverse`, the app is at **`http://localhost:1420`** on the device (a secure context, so service workers work).
-Put the samples on the device: `adb push samples/test.note /sdcard/Download/` (and `sample.pdf`).
+Put the samples on the device: `adb push public/samples/test.note /sdcard/Download/` (and `public/samples/sample.pdf`).
 
 ## Phase 2 - the web app on Android (record PASS / FAIL / BLOCKED + evidence for each)
 | # | Check | Expected |
@@ -55,9 +55,9 @@ Put the samples on the device: `adb push samples/test.note /sdcard/Download/` (a
 ## Phase 3 - real StarNote interop (the question that matters most)
 Question: **does the real StarNote app open `.note` files written by this web app, including strokes drawn here?**
 1. `adb install -r artifacts/starnote.apk`. If it fails with `INSTALL_FAILED_NO_MATCHING_ABIS`, ARM translation is missing:
-   mark BLOCKED, say the user must run `bash qa/waydroid-arm-fetch.sh` and the printed sudo command, and stop Phase 3.
+   mark BLOCKED, say the user must run `bash scripts/waydroid-arm-fetch.sh` and the printed sudo command, and stop Phase 3.
 2. Launch StarNote, get past onboarding (no account, no purchases). Find how it imports `.note` (its UI is Korean/English).
-3. **B1** Import the ORIGINAL `samples/test.note`. Does it open? Are the 4 strokes and the text visible?
+3. **B1** Import the ORIGINAL `public/samples/test.note`. Does it open? Are the 4 strokes and the text visible?
 4. **B2** From the web app: open `test`, draw one clearly different stroke (e.g. a blue diagonal across the page), press Back, card menu -> Download .note.
    Import that downloaded file into StarNote. Does it open? **Is the new stroke visible?** Are the original strokes still there?
 5. **B3** From the web app: create a brand-new note, draw a stroke, download it, import into StarNote. Opens? Stroke visible? Title right?
@@ -70,4 +70,4 @@ Do not guess about cause; just report what StarNote did, with screenshots.
 3. For each FAIL: exact steps to reproduce, expected vs actual, screenshot path, relevant log lines.
 4. A short "most important findings" list (max 5), ranked.
 5. What you could not test and why.
-Keep screenshots in `qa/reports/android-<date>/`. Leave Waydroid running (the orchestrator may reuse it); say how to stop it (`bash qa/waydroid-up.sh down`).
+Keep screenshots in `qa/reports/android-<date>/`. Leave Waydroid running (the orchestrator may reuse it); say how to stop it (`bash scripts/waydroid-up.sh down`).

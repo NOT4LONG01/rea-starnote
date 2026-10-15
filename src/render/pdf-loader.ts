@@ -1,6 +1,6 @@
 import * as pdfjsLib from "pdfjs-dist";
-import { StarNoteDocument, ParsedTile, fitPageRect } from "./note-loader";
-import { relayout } from "./pages";
+import { StarNoteDocument, ParsedTile, fitPageRect } from "../model/note-loader";
+import { relayout } from "../model/pages";
 
 // Set worker source using Vite-supported URL syntax
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(

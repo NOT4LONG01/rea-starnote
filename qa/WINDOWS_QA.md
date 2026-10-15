@@ -22,9 +22,9 @@ Run `/remote-control` in this session (or ask the person to) so the orchestrator
 ## 1. Set up
 1. Node 20+ LTS: `node -v`. If missing: `winget install OpenJS.NodeJS.LTS`, then reopen the terminal.
 2. This folder came as `rea-starnote-qa.zip`. Unzip it (not into OneDrive-synced folders if you can avoid it, e.g. `C:\qa`).
-3. `cd rea-starnote\desktop-client` then `npm ci`.
+3. `cd rea-starnote` then `npm ci`.
 4. Run all four test files and the build. Record output:
-   `node test-sync.mjs`, `node test-erase-saved.mjs`, `node test-pages.mjs`, `npm run build`.
+   `node tests/sync.test.mjs`, `node tests/erase-saved.test.mjs`, `node tests/pages.test.mjs`, `npm run build`.
 5. `npm run dev` (keep it running in its own terminal). The app is at **http://localhost:1420**.
    (The Google OAuth client is registered for exactly `http://localhost:1420`; use that origin, not 127.0.0.1.)
 

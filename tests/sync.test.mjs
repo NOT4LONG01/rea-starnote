@@ -1,4 +1,4 @@
-// Tests the REAL src/sync.ts and the REAL Drive adapter in src/google-drive.ts (bundled with esbuild),
+// Tests the REAL src/data/sync.ts and the REAL Drive adapter in src/integrations/google-drive.ts (bundled with esbuild),
 // against in-memory fakes. Run: node test-sync.mjs
 import { build } from "esbuild";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -10,8 +10,8 @@ import assert from "node:assert/strict";
 const here = dirname(fileURLToPath(import.meta.url));
 const out = mkdtempSync(join(tmpdir(), "sn-sync-"));
 const entry = join(out, "entry.ts");
-writeFileSync(entry, `export { syncLibrary } from ${JSON.stringify(join(here, "src/sync.ts"))};
-export { GoogleDriveService } from ${JSON.stringify(join(here, "src/google-drive.ts"))};`);
+writeFileSync(entry, `export { syncLibrary } from ${JSON.stringify(join(here, "../src/data/sync.ts"))};
+export { GoogleDriveService } from ${JSON.stringify(join(here, "../src/integrations/google-drive.ts"))};`);
 await build({ entryPoints: [entry], bundle: true, platform: "node", format: "esm", outfile: join(out, "bundle.mjs"), logLevel: "error" });
 const { syncLibrary, GoogleDriveService } = await import(pathToFileURL(join(out, "bundle.mjs")).href);
 

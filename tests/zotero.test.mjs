@@ -1,4 +1,4 @@
-// Tests the REAL src/zotero.ts against an in-memory fake of the Zotero Web API v3 and its file-storage server.
+// Tests the REAL src/integrations/zotero.ts against an in-memory fake of the Zotero Web API v3 and its file-storage server.
 // Run: node test-zotero.mjs
 import { build } from "esbuild";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const out = mkdtempSync(join(tmpdir(), "sn-zot-"));
-writeFileSync(join(out, "entry.ts"), `export * from ${JSON.stringify(join(here, "src/zotero.ts"))};`);
+writeFileSync(join(out, "entry.ts"), `export * from ${JSON.stringify(join(here, "../src/integrations/zotero.ts"))};`);
 
 // --- browser globals the client touches
 const store = new Map();

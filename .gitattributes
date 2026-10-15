@@ -1,0 +1,13 @@
+# Line endings: LF in the repo, so Windows and Linux checkouts produce the same files.
+* text=auto eol=lf
+*.bat text eol=crlf
+
+# Never touch these
+*.note binary
+*.pdf binary
+*.png binary
+*.ico binary
+*.icns binary
+*.apk binary
+*.jar binary
+*.keystore binary

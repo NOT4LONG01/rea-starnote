@@ -6,10 +6,10 @@ everything not listed here (R3-R10, R12-R14, R16-R18 are still to be done), and 
 `qa\reports\windows-retest6-<date>.md` with a summary to `playground-00`.
 
 ## 0. Setup
-`npm ci`, then `node test-sync.mjs`, `node test-zotero.mjs`, `node test-pdf-export.mjs`, `node test-desktop-oauth.mjs`,
-`node test-erase-saved.mjs`, `node test-pages.mjs`, `npm run build`, `npm run tauri build -- --no-bundle`.
+`npm ci`, then `node tests/sync.test.mjs`, `node tests/zotero.test.mjs`, `node tests/pdf-export.test.mjs`, `node tests/desktop-oauth.test.mjs`,
+`node tests/erase-saved.test.mjs`, `node tests/pages.test.mjs`, `npm run build`, `npm run tauri build -- --no-bundle`.
 Expected test counts, in that order: 32, 18, 10, 17, 8, 6. Notes:
-- `test-pdf-export.mjs` is now portable (Windows `where`, `python`/`py`, Ghostscript optional). It still needs
+- `tests/pdf-export.test.mjs` is now portable (Windows `where`, `python`/`py`, Ghostscript optional). It still needs
   `pdfinfo`, `pdftoppm`, `pdftotext` and Python with Pillow; if Pillow is missing report BLOCKED for that file only.
 - The three older scripts (`test-roundtrip`, `test-archive-roundtrip`, `test-interpolator`) were removed: they never
   imported the app code.

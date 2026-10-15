@@ -5,12 +5,12 @@ import {
   ribbonToPath,
   RawStrokePoint,
   BrushParameters
-} from "./stroke-interpolator";
-import { StarNoteDocument, ParsedTile, ParsedStroke, ParsedTextBox } from "./note-loader";
-import { isMathText, latexOf } from "./math";
-import { PenType, penById, penScaleOf } from "./pens";
-import { ShapeKind, shapePoints } from "./shapes";
-import { DEFAULT_FORMAT, PageFormat, PageTemplate, drawPageTemplate, newPageTile, nextPageTag, relayout, sizeOfPage } from "./pages";
+} from "../model/stroke-interpolator";
+import { StarNoteDocument, ParsedTile, ParsedStroke, ParsedTextBox } from "../model/note-loader";
+import { isMathText, latexOf } from "../model/math";
+import { PenType, penById, penScaleOf } from "../model/pens";
+import { ShapeKind, shapePoints } from "../model/shapes";
+import { DEFAULT_FORMAT, PageFormat, PageTemplate, drawPageTemplate, newPageTile, nextPageTag, relayout, sizeOfPage } from "../model/pages";
 
 type PageRect = { left: number; top: number; right: number; bottom: number };
 type Action =
@@ -670,7 +670,7 @@ export class CanvasRenderer {
       m = { img: null, w: 0, h: 0 };
       this.mathCache.set(key, m);
       const entry = m;
-      void import("./math").then(({ renderMath }) => renderMath(latexOf(tb.text), Math.max(16, tb.fontSize), color)).then((r) => {
+      void import("../model/math").then(({ renderMath }) => renderMath(latexOf(tb.text), Math.max(16, tb.fontSize), color)).then((r) => {
         const img = new Image();
         img.onload = () => { entry.img = img; entry.w = r.width; entry.h = r.height; this.render(); };
         img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(r.svg);

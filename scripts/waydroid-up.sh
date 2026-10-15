@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Starts Android (Waydroid) for QA and connects adb. Runs as the normal user, no sudo.
-#   bash qa/waydroid-up.sh          start everything
-#   bash qa/waydroid-up.sh down     stop the session and the compositor this script started
+#   bash scripts/waydroid-up.sh          start everything
+#   bash scripts/waydroid-up.sh down     stop the session and the compositor this script started
 set -uo pipefail
 
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -15,7 +15,7 @@ if [ "${1:-}" = "down" ]; then
   echo "stopped"; exit 0
 fi
 
-command -v waydroid >/dev/null || { echo "waydroid is not installed (run: sudo bash qa/waydroid-setup.sh)"; exit 1; }
+command -v waydroid >/dev/null || { echo "waydroid is not installed (run: sudo bash scripts/waydroid-setup.sh)"; exit 1; }
 
 # 1. A small Wayland compositor shown as a window on the X11 desktop (so you can watch Android).
 if [ ! -S "$RUN/$SOCK" ]; then

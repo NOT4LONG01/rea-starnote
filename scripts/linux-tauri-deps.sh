@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # System libraries needed to build the Tauri (desktop) app on Linux Mint 22 / Ubuntu 24.04.
-# Run once as root:   sudo bash qa/linux-tauri-deps.sh
+# Run once as root:   sudo bash scripts/linux-tauri-deps.sh
 # It only installs distro packages (nothing else). Rust itself is installed per-user afterwards, no sudo.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "Run with sudo:  sudo bash $0"; exit 1; }

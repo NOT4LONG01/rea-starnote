@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-time Waydroid install for Linux Mint 22.x (Ubuntu 24.04 "noble" base).
-# Run once, as root:   sudo bash qa/waydroid-setup.sh
+# Run once, as root:   sudo bash scripts/waydroid-setup.sh
 # Read it first. It only: installs packages, adds the official Waydroid apt repo, loads the Android "binder"
 # kernel module, and downloads the vanilla (no Google Play) Android image. It does not touch your files.
 set -euo pipefail
@@ -33,4 +33,4 @@ systemctl enable --now waydroid-container
 echo "==> 6/6 check"
 waydroid status || true
 echo
-echo "Done. Next: tell Claude 'waydroid is set up'. (Optional, for the real StarNote APK: bash qa/waydroid-arm-fetch.sh)"
+echo "Done. Next: tell Claude 'waydroid is set up'. (Optional, for the real StarNote APK: bash scripts/waydroid-arm-fetch.sh)"
