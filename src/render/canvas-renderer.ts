@@ -10,7 +10,7 @@ import { StarNoteDocument, ParsedTile, ParsedStroke, ParsedTextBox } from "../mo
 import { isMathText, latexOf } from "../model/math";
 import { PenType, penById, penScaleOf } from "../model/pens";
 import { ShapeKind, shapePoints } from "../model/shapes";
-import { DEFAULT_FORMAT, PageFormat, PageTemplate, drawPageTemplate, newPageTile, nextPageTag, relayout, sizeOfPage } from "../model/pages";
+import { DEFAULT_FORMAT, PageFormat, PageTemplate, cellTag, drawPageTemplate, gridRectOf, newCanvasTile, newPageTile, nextPageTag, relayout, sizeOfPage, spacingOf } from "../model/pages";
 
 type PageRect = { left: number; top: number; right: number; bottom: number };
 type Action =
@@ -172,6 +172,8 @@ export class CanvasRenderer {
     // Focus on the first tile or center of document
     if (doc.layout === "stack") {
       this.fit("page", this.stackTiles()[0].pageRect);
+    } else if (doc.infinite) {
+      this.fit("width", gridRectOf("Page[0-0]"));
     } else {
       this.centerOnTile(doc.tiles.values().next().value as ParsedTile);
     }
@@ -609,6 +611,7 @@ export class CanvasRenderer {
 
   // ------------------------------------------------------------ text boxes
   private tileAt(x: number, y: number): ParsedTile | null {
+    if (this.doc?.infinite) { this.ensureTiles([{ x, y }]); return this.doc.tiles.get(cellTag(x, y)) ?? null; }
     for (const t of this.doc?.tiles.values() ?? []) {
       const r = t.pageRect ?? t.rect;
       if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) return t;
@@ -789,6 +792,7 @@ export class CanvasRenderer {
     this.drawingPointerId = null;
     if (!st || tiny) { this.render(); return; }
     if (st.points.some((p) => !this.isOnPage(p.x, p.y))) { this.onNotice?.("The shape has to stay on the page."); this.render(); return; }
+    this.ensureTiles(st.points);
     this.userDrawnStrokes.push(st);
     this.commit({ kind: "draw", stroke: st });
     this.paintFinished(st);
@@ -811,6 +815,7 @@ export class CanvasRenderer {
       durationMs: Math.round(performance.now() - this.strokeStartTime),
       points: [...this.currentStrokePoints],
     };
+    this.ensureTiles(stroke.points);
     this.userDrawnStrokes.push(stroke);
     this.commit({ kind: "draw", stroke });
     this.currentStrokePoints = [];
@@ -895,6 +900,9 @@ export class CanvasRenderer {
 
   /** The page tile under the view centre (or nearest to it); origin tile on a blank canvas. */
   private currentPageRect() {
+    if (this.doc?.infinite) { // the grid cell under the middle of the screen
+      return gridRectOf(cellTag((this.canvas.width / 2 - this.panX) / this.zoom, (this.canvas.height / 2 - this.panY) / this.zoom));
+    }
     const rects = this.pageRects();
     const cx = (this.canvas.width / 2 - this.panX) / this.zoom;
     const cy = (this.canvas.height / 2 - this.panY) / this.zoom;
@@ -909,6 +917,7 @@ export class CanvasRenderer {
 
   /** Page rects in reading order (top to bottom, then left to right). */
   private pageRects(): PageRect[] {
+    if (this.doc?.infinite) return [this.currentPageRect()];
     const list = this.doc ? [...this.doc.tiles.values()].map((t) => t.pageRect ?? t.rect) : [NO_DOC_PAGE];
     return list.sort((a, b) => a.top - b.top || a.left - b.left);
   }
@@ -947,12 +956,42 @@ export class CanvasRenderer {
   public onPagesChange?: () => void;
 
   public isStack(): boolean { return this.doc?.layout === "stack"; }
+  public isInfinite(): boolean { return !!this.doc?.infinite; }
+  public isContinuous(): boolean { return !!this.doc?.continuous; }
+
+  /** Infinite canvas: make sure every grid cell the points touch has a tile (the archive stores ink per tile). */
+  private ensureTiles(points: { x: number; y: number }[]) {
+    const doc = this.doc;
+    if (!doc?.infinite) return;
+    let last = "";
+    for (const p of points) {
+      const tag = cellTag(p.x, p.y);
+      if (tag === last) continue;
+      last = tag;
+      if (!doc.tiles.has(tag)) { doc.tiles.set(tag, newCanvasTile(tag, doc.infinite.template, doc.infinite.spacing)); doc.pagesChanged = true; }
+    }
+  }
+
+  private growing = false;
+  /** Notebook: when the view nears the end of the last page, another page is added: the sheet never runs out. */
+  private maybeGrowNotebook() {
+    const d = this.doc;
+    if (!d?.continuous || d.layout !== "stack" || this.growing || this.canvas.height === 0) return;
+    const last = [...d.tiles.values()].pop();
+    if (!last?.pageRect) return;
+    if ((this.canvas.height - this.panY) / this.zoom < last.pageRect.bottom - 700) return;
+    this.growing = true;
+    queueMicrotask(() => {
+      this.addPage({ w: 2100, h: 2100, template: last.template ?? "ruled", spacing: spacingOf(last) }, undefined, true);
+      this.growing = false;
+    });
+  }
 
   private stackTiles(): ParsedTile[] { return this.doc ? [...this.doc.tiles.values()] : []; }
 
   public pageFormatAt(index: number): PageFormat | null {
     const t = this.stackTiles()[index];
-    return t ? { ...sizeOfPage(t), template: t.template ?? "ruled" } : null;
+    return t ? { ...sizeOfPage(t), template: t.template ?? "ruled", spacing: t.spacing } : null;
   }
 
   public hasBackgroundAt(index: number): boolean { return !!this.stackTiles()[index]?.backgroundImage; }
@@ -988,7 +1027,7 @@ export class CanvasRenderer {
   }
 
   /** Inserts a page after `after` (the end by default) and shows it. Returns its index. */
-  public addPage(format: PageFormat, after?: number): number {
+  public addPage(format: PageFormat, after?: number, silent = false): number {
     if (!this.doc) return -1;
     const doc = this.doc;
     doc.layout = "stack";
@@ -998,7 +1037,7 @@ export class CanvasRenderer {
     entries.splice(at, 0, [tag, newPageTile(tag, format)]);
     doc.tiles = new Map(entries);
     this.restack();
-    this.fit("page", doc.tiles.get(tag)!.pageRect);
+    if (!silent) this.fit("page", doc.tiles.get(tag)!.pageRect);
     return at;
   }
 
@@ -1039,6 +1078,7 @@ export class CanvasRenderer {
       const t = tiles[i];
       if (!t) continue;
       if (f.template) t.template = f.template;
+      if (f.spacing) t.spacing = f.spacing;
       if (f.w && f.h && !t.backgroundImage) {
         const pr = t.pageRect ?? t.rect;
         t.pageRect = { left: pr.left, top: pr.top, right: pr.left + Math.min(2100, f.w), bottom: pr.top + Math.min(2100, f.h) };
@@ -1050,7 +1090,7 @@ export class CanvasRenderer {
   /** True when the end of the last page is on screen: the moment to offer "add page". */
   public endOfNoteVisible(): boolean {
     const tiles = this.stackTiles();
-    if (tiles.length === 0 || this.canvas.height === 0) return false;
+    if (tiles.length === 0 || this.canvas.height === 0 || this.doc?.continuous) return false; // a notebook grows by itself
     const last = tiles[tiles.length - 1].pageRect!;
     return last.bottom * this.zoom + this.panY <= this.canvas.height - 4;
   }
@@ -1190,6 +1230,7 @@ export class CanvasRenderer {
       };
     });
     for (const st of from) this.removeStroke(st);
+    to.forEach((st) => this.ensureTiles(st.points));
     this.userDrawnStrokes.push(...to);
     this.commit({ kind: "replace", from, to });
     this.setSelection(to);
@@ -1231,6 +1272,7 @@ export class CanvasRenderer {
       points: c.points.map((p) => ({ ...p, x: p.x + shift.x, y: p.y + shift.y })),
     }));
     this.clearSelection();
+    to.forEach((st) => this.ensureTiles(st.points));
     this.userDrawnStrokes.push(...to);
     this.commit({ kind: "replace", from: [], to });
     this.setSelection(to); // ready to drag into place
@@ -1355,6 +1397,7 @@ export class CanvasRenderer {
   }
 
   public isOnPage(x: number, y: number): boolean {
+    if (this.doc?.infinite) return true; // a tile appears wherever you write (see ensureTiles)
     for (const t of this.doc?.tiles.values() ?? []) {
       const r = t.pageRect ?? t.rect;
       if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) return true;
@@ -1390,6 +1433,7 @@ export class CanvasRenderer {
   private clampPan() {
     const W = this.canvas.width, H = this.canvas.height;
     if (W === 0 || H === 0) return; // hidden view
+    if (this.doc?.infinite) return; // an infinite canvas has no edge to stay inside
     const c = this.contentBounds();
     const m = 48 * (window.devicePixelRatio || 1);
     const fit = (pan: number, size: number, lo: number, hi: number) => {
@@ -1468,10 +1512,12 @@ export class CanvasRenderer {
     const v = { l: (rg.x - this.panX) / this.zoom, t: (rg.y - this.panY) / this.zoom, r: (rg.x + rg.w - this.panX) / this.zoom, b: (rg.y + rg.h - this.panY) / this.zoom };
     this.view = v;
     const m = 40; // page shadow
+    const infinite = !!this.doc?.infinite;
+    if (infinite) this.paintInfiniteBackdrop(v);
     for (const tile of this.doc?.tiles.values() ?? []) {
       const pr = tile.pageRect ?? tile.rect;
       if (pr.right + m < v.l || pr.left - m > v.r || pr.bottom + m < v.t || pr.top - m > v.b) continue; // page not in view
-      this.renderTile(tile);
+      if (infinite) this.renderTileInk(tile, false); else this.renderTile(tile);
     }
     if (this.userDrawnStrokes.length) {
       ctx.save();
@@ -1489,6 +1535,7 @@ export class CanvasRenderer {
 
   /** Limits drawing to the pages (world coordinates; the current transform must already be the view's). */
   private clipToPages(ctx: CanvasRenderingContext2D) {
+    if (this.doc?.infinite) return; // no page edges to respect
     ctx.beginPath();
     for (const t of this.doc?.tiles.values() ?? []) { const r = t.pageRect ?? t.rect; ctx.rect(r.left, r.top, r.right - r.left, r.bottom - r.top); }
     ctx.clip();
@@ -1525,6 +1572,7 @@ export class CanvasRenderer {
   private draw() {
     if (this.canvas.width === 0 || this.canvas.height === 0) return; // the editor is hidden
     this.clampPan();
+    this.maybeGrowNotebook();
     if (!this.slideScene()) this.paintScene();
 
     this.drawOverlay();
@@ -1616,18 +1664,31 @@ export class CanvasRenderer {
   }
 
   /** Lines, grid or dots printed on a page (nothing for a blank one). */
-  private drawTemplate(kind: PageTemplate, pr: PageRect) {
-    drawPageTemplate(this.ctx, kind, pr, { line: this.eInkMode ? "#d1d5db" : "#f1f5f9", dot: this.eInkMode ? "#9ca3af" : "#cbd5e1", lineWidth: 0.8, dotRadius: 2.6 });
+  private drawTemplate(kind: PageTemplate, pr: PageRect, spacing?: number, seamless = false) {
+    drawPageTemplate(this.ctx, kind, pr, { line: this.eInkMode ? "#d1d5db" : "#f1f5f9", dot: this.eInkMode ? "#9ca3af" : "#cbd5e1", lineWidth: 0.8, dotRadius: 2.6 }, spacing, seamless);
+  }
+
+  /** The paper of an infinite canvas: one white sheet under everything, ruled the whole way (nothing when too dense to see). */
+  private paintInfiniteBackdrop(v: { l: number; t: number; r: number; b: number }) {
+    const inf = this.doc?.infinite;
+    if (!inf) return;
+    const ctx = this.ctx;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(v.l, v.t, v.r - v.l, v.b - v.t);
+    const dense = inf.spacing * this.zoom < (inf.template === "dots" ? 12 : 7); // device pixels
+    if (inf.template === "blank" || dense) return;
+    // aligned to the 2100-unit grid, so the ruling lines up the same way in every tile
+    this.drawTemplate(inf.template, { left: Math.floor(v.l / 2100) * 2100, top: Math.floor(v.t / 2100) * 2100, right: Math.ceil(v.r / 2100) * 2100, bottom: Math.ceil(v.b / 2100) * 2100 }, inf.spacing, true);
   }
 
   private renderTile(tile: ParsedTile) {
     const ctx = this.ctx;
-    const { left, top } = tile.rect;
 
     // Tile Page background (a PDF page keeps its own aspect inside the tile)
     const pr = tile.pageRect ?? tile.rect;
+    const joined = !!this.doc?.continuous; // notebook: pages meet without a shadow or an outline
     ctx.fillStyle = "#ffffff";
-    if (!this.eInkMode) {
+    if (!this.eInkMode && !joined) {
       ctx.shadowColor = "rgba(0,0,0,0.4)";
       ctx.shadowBlur = 15;
     }
@@ -1638,22 +1699,34 @@ export class CanvasRenderer {
     if (tile.backgroundImage) {
       ctx.drawImage(tile.backgroundImage, pr.left, pr.top, pr.right - pr.left, pr.bottom - pr.top);
     } else {
-      this.drawTemplate(tile.template ?? "ruled", pr);
+      this.drawTemplate(tile.template ?? "ruled", pr, spacingOf(tile), joined);
     }
 
     // Tile Boundary outline
-    ctx.strokeStyle = this.eInkMode ? "#000000" : "#e2e8f0";
-    ctx.lineWidth = this.eInkMode ? 2.0 / this.zoom : 1.0 / this.zoom;
-    ctx.strokeRect(pr.left, pr.top, pr.right - pr.left, pr.bottom - pr.top);
+    if (!joined) {
+      ctx.strokeStyle = this.eInkMode ? "#000000" : "#e2e8f0";
+      ctx.lineWidth = this.eInkMode ? 2.0 / this.zoom : 1.0 / this.zoom;
+      ctx.strokeRect(pr.left, pr.top, pr.right - pr.left, pr.bottom - pr.top);
+    }
+    this.renderTileInk(tile, true);
+  }
+
+  /** A tile's text and strokes. `clip`: cut them at the page edge (not on an infinite canvas, where tiles are just storage). */
+  private renderTileInk(tile: ParsedTile, clip: boolean) {
+    const ctx = this.ctx;
+    const { left, top } = tile.rect;
+    const pr = tile.pageRect ?? tile.rect;
 
     // Render Tile Contents OFFSET BY TILE ORIGIN (left, top)
     // Both text boxes and stroke points are stored in tile-local space [0, 2100] x [0, 2100]
     ctx.save();
     ctx.translate(left, top);
 
-    ctx.beginPath(); // ink and text never show outside their page (a fast stroke's width or smoothing can overshoot the edge)
-    ctx.rect(pr.left - left, pr.top - top, pr.right - pr.left, pr.bottom - pr.top);
-    ctx.clip();
+    if (clip) {
+      ctx.beginPath(); // ink and text never show outside their page (a fast stroke's width or smoothing can overshoot the edge)
+      ctx.rect(pr.left - left, pr.top - top, pr.right - pr.left, pr.bottom - pr.top);
+      ctx.clip();
+    }
 
     // 1. Render Text Boxes (math is typeset; until it is ready, or if it can't be, the LaTeX source shows)
     if (tile.textBoxes && tile.textBoxes.length > 0) {

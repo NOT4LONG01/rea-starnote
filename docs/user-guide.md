@@ -5,7 +5,11 @@ For the Android, Windows and Linux apps. (The localhost web version is for devel
 ## Library
 Your notes are kept on the device. The library shows a grid with the tabs All / Notes / PDF, search, sort, and a trash
 (deleted notes stay there until you empty it). Create a note with **New note** and choose the paper (A4, A5, ...) and template
-(blank, ruled, grid, dots); **Import .note / .pdf** adds a file from the device. Opened notes appear as tabs; the title at
+(blank, ruled, grid, dots), the line spacing (Narrow, Medium, Wide) and the type:
+  - **Pages**: finite pages (A4, A5, Tablet 4:3, ...) one under the other.
+  - **Notebook**: one endless, seamless sheet for a long session. It is as wide as a page can be and a new page appears by itself as you scroll down.
+  - **Infinite**: no page edges; write anywhere and pan as far as you like (the paper keeps its ruling the whole way).
+  **Import .note / .pdf** adds a file from the device. Opened notes appear as tabs; the title at
 the top lists them.
 
 ## Editor

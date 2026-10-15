@@ -835,7 +835,7 @@ export async function exportStarNoteArchive(
   }
 
   // A stack of pages: remember order, sizes and templates, and keep the per-page ruled template files in step
-  if (doc.layout === "stack") {
+  if (doc.layout === "stack" || doc.infinite) {
     zip.file(sidecarPath(docUuid), JSON.stringify(sidecarOf(doc)));
     for (const [tag, t] of doc.tiles) {
       const files = [`${docUuid}/template/json/${tag}.template_json`, `${docUuid}/document/${docUuid}/template/json/${tag}.template_json`];

@@ -1,4 +1,4 @@
-import { isPageStack, relayout, sidecarPath, PageTemplate, TEMPLATES } from "./pages";
+import { isPageStack, relayout, sidecarPath, PageTemplate, TEMPLATES, DEFAULT_SPACING } from "./pages";
 import JSZip from "jszip";
 import { parseStarNotePointsBinary, RawStrokePoint } from "./stroke-interpolator";
 
@@ -38,6 +38,8 @@ export interface ParsedTile {
   pageRect?: { left: number; top: number; right: number; bottom: number };
   /** What is printed on the page (unset = StarNote's own ruled lines). */
   template?: PageTemplate;
+  /** Line / grid / dot spacing in page units; unset = StarNote's own (see LEGACY_SPACING). */
+  spacing?: number;
   /** False for a page added since the last save (it has nothing in the archive to delete). */
   saved?: boolean;
 }
@@ -71,6 +73,10 @@ export interface StarNoteDocument {
   isPdfImport?: boolean;
   /** "stack": finite pages one under the other (managed: add, delete, reorder). Unset: StarNote's free-form canvas of tiles. */
   layout?: "stack";
+  /** A stack whose pages join without a gap, one endless sheet that grows as you write (a notebook). */
+  continuous?: boolean;
+  /** An infinite canvas: free-form tiles that appear wherever you write; the page style new tiles get. */
+  infinite?: { template: PageTemplate; spacing: number };
   /** Pages deleted since the last save (their files are still in rawZip). */
   removedPages?: string[];
   /** Page order, size or template changed since the last save. */
@@ -324,9 +330,21 @@ async function indexShapesFromZip(zip: JSZip): Promise<ShapeIndexResult> {
  */
 async function applyPageLayout(doc: StarNoteDocument, info: Map<number, string>) {
   const sidecarFile = doc.rawZip?.file(sidecarPath(doc.uuid));
-  let side: { pages?: { tag: string; w: number; h: number; template: string }[] } | null = null;
+  let side: { continuous?: boolean; layout?: string; template?: string; spacing?: number; pages?: { tag: string; w: number; h: number; template: string; spacing?: number }[] } | null = null;
   if (sidecarFile) { try { side = JSON.parse(await sidecarFile.async("string")); } catch { side = null; } }
   if (!side && !isPageStack([...doc.tiles.keys()])) return; // free-form canvas
+  if (side?.layout === "canvas") { // an infinite canvas of ours: tiles stay where they are, the page style is remembered
+    const template = (TEMPLATES.some((t) => t.id === side!.template) ? side.template : "ruled") as PageTemplate;
+    const spacing = side.spacing ?? DEFAULT_SPACING;
+    doc.infinite = { template, spacing };
+    for (const tile of doc.tiles.values()) {
+      const meta = side.pages?.find((p) => p.tag === tile.pageTag);
+      tile.pageRect = { ...tile.rect };
+      tile.template = (TEMPLATES.some((t) => t.id === meta?.template) ? meta!.template : template) as PageTemplate;
+      tile.spacing = meta?.spacing ?? spacing;
+    }
+    return;
+  }
 
   let infoMap: Record<string, { width?: number; height?: number }> = {};
   try { infoMap = JSON.parse(info.get(12) ?? "{}").pageInfoMap ?? {}; } catch { /* square pages */ }
@@ -342,10 +360,12 @@ async function applyPageLayout(doc: StarNoteDocument, info: Map<number, string>)
       tile.pageRect = { left: tile.rect.left, top: tile.rect.top, right: tile.rect.left + Math.min(2100, w), bottom: tile.rect.top + Math.min(2100, h) };
     }
     if (meta && TEMPLATES.some((t) => t.id === meta.template)) tile.template = meta.template as PageTemplate;
+    if (meta?.spacing) tile.spacing = meta.spacing;
     sorted.set(tag, tile);
   }
   doc.tiles = sorted;
   doc.layout = "stack";
+  if (side?.continuous) doc.continuous = true;
   relayout(doc);
 }
 

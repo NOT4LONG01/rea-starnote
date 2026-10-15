@@ -16,7 +16,7 @@ export * from ${JSON.stringify(join(here, "../src/model/pages.ts"))};
 export { default as JSZip } from ${JSON.stringify(join(here, "../node_modules/jszip"))};`);
 await build({ entryPoints: [join(tmp, "entry.ts")], bundle: true, platform: "node", format: "esm", outfile: join(tmp, "bundle.mjs"), logLevel: "error" });
 const m = await import(pathToFileURL(join(tmp, "bundle.mjs")).href);
-const { loadStarNoteArchive, exportStarNoteArchive, newPageTile, relayout, nextPageTag, pageFormat, PAGE_GAP, isPageStack, JSZip } = m;
+const { loadStarNoteArchive, exportStarNoteArchive, newPageTile, relayout, nextPageTag, pageFormat, PAGE_GAP, isPageStack, newCanvasTile, cellTag, DEFAULT_SPACING, LEGACY_SPACING, spacingOf, JSZip } = m;
 
 let passed = 0;
 const test = async (name, fn) => { await fn(); passed++; console.log(`  ok  ${name}`); };
@@ -135,6 +135,58 @@ await test("the format is recorded natively too: note_info carries each page's w
   const re = await reload(await z.generateAsync({ type: "uint8array" }));
   assert.equal(re.layout, "stack");
   assert.deepEqual([...re.tiles.values()].map((t) => [t.pageRect.right - t.pageRect.left, t.pageRect.bottom - t.pageRect.top]), [[1046, 1485], [2100, 1485]]);
+});
+
+
+await test("line spacing is recorded per page; new pages are 52.5 (about 7 mm), older notes keep StarNote's 86.81", async () => {
+  assert.equal(DEFAULT_SPACING, 52.5);
+  for (const v of [42, 52.5, 70]) assert.equal(2100 % v, 0, `${v} divides a tile, so ruling lines up across seams`);
+  const doc = stack([pageFormat("a4", false, "ruled"), pageFormat("a4", false, "grid", 70)]);
+  assert.deepEqual([...doc.tiles.values()].map((t) => t.spacing), [52.5, 70]);
+  const re = await reload(await exportStarNoteArchive(doc, []));
+  assert.deepEqual([...re.tiles.values()].map(spacingOf), [52.5, 70]);
+  const z = await JSZip.loadAsync(await exportStarNoteArchive(doc, []));
+  const side = JSON.parse(await z.file(`${doc.uuid}/interop/pages.json`).async("string"));
+  for (const p of side.pages) delete p.spacing; // a note saved before spacing existed
+  z.file(`${doc.uuid}/interop/pages.json`, JSON.stringify(side));
+  const old = await reload(await z.generateAsync({ type: "uint8array" }));
+  assert.deepEqual([...old.tiles.values()].map(spacingOf), [LEGACY_SPACING, LEGACY_SPACING]);
+});
+
+await test("a notebook joins its pages without a gap, survives a save, and a stroke over the seam is split between the pages", async () => {
+  const doc = { uuid: crypto.randomUUID(), title: "nb", tiles: new Map(), layout: "stack", continuous: true };
+  for (let i = 0; i < 3; i++) { const tag = nextPageTag(doc); doc.tiles.set(tag, newPageTile(tag, { w: 2100, h: 2100, template: "ruled" })); }
+  relayout(doc);
+  const [a, b, c] = [...doc.tiles.values()];
+  assert.equal(b.pageRect.top, a.pageRect.bottom);
+  assert.equal(c.pageRect.top, b.pageRect.bottom);
+  const across = { ...stroke(500, 2050), points: [{ dt: 0, x: 500, y: 2050, pressure: 20000 }, { dt: 5, x: 560, y: 2150, pressure: 20000 }] }; // page 1 -> page 2
+  const re = await reload(await exportStarNoteArchive(doc, [across]));
+  assert.equal(re.continuous, true);
+  assert.equal(re.layout, "stack");
+  const [r1, r2] = [...re.tiles.values()];
+  assert.equal(r2.pageRect.top, r1.pageRect.bottom, "still joined after reload");
+  assert.equal(r1.strokes.length, 1);
+  assert.equal(r2.strokes.length, 1, "the part past the seam is on the next page");
+});
+
+await test("an infinite canvas keeps its free-form tiles and page style, and a stroke over a tile edge is stored on both tiles", async () => {
+  assert.equal(cellTag(10, 10), "Page[0-0]");
+  assert.equal(cellTag(-1, -1), "Page[-1--1]");
+  assert.equal(cellTag(2100, 4300), "Page[2-1]");
+  const doc = { uuid: crypto.randomUUID(), title: "inf", tiles: new Map(), infinite: { template: "grid", spacing: 70 } };
+  for (const tag of ["Page[0-0]", "Page[0-1]", "Page[-1--1]"]) doc.tiles.set(tag, newCanvasTile(tag, "grid", 70));
+  assert.deepEqual(doc.tiles.get("Page[-1--1]").rect, { left: -2100, top: -2100, right: 0, bottom: 0 });
+  const across = { ...stroke(2000, 300), points: [{ dt: 0, x: 2000, y: 300, pressure: 20000 }, { dt: 5, x: 2200, y: 320, pressure: 20000 }] }; // tile 0-0 -> 0-1
+  const lone = stroke(-300, -300); // in the negative quadrant
+  const re = await reload(await exportStarNoteArchive(doc, [across, lone]));
+  assert.equal(re.layout, undefined, "stays a free-form canvas, not a stack");
+  assert.deepEqual(re.infinite, { template: "grid", spacing: 70 });
+  assert.equal(re.tiles.get("Page[0-0]").strokes.length, 1);
+  assert.equal(re.tiles.get("Page[0-1]").strokes.length, 1);
+  assert.equal(re.tiles.get("Page[-1--1]").strokes.length, 1);
+  assert.equal(re.tiles.get("Page[0-1]").spacing, 70);
+  assert.equal(re.tiles.get("Page[0-1]").template, "grid");
 });
 
 console.log(`${passed} tests passed`);

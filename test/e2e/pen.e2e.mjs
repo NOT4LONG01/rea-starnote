@@ -19,7 +19,7 @@ await drag(pts.map(([x, y]) => [x, y + 100]));
 const mouse = await ev(`JSON.stringify(window.__starnote.renderer.getUserStrokes().at(-1)?.points ?? [])`).then(JSON.parse);
 ok(mouse.length >= 55 && mouse.length <= 61, `a mouse stroke is the same (${mouse.length} points)`);
 // the ink really is painted
-const ink = await ev(`(() => { const c = document.getElementById('note-canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 120 && d[i + 1] < 90 && d[i + 2] < 90) n++; return n; })()`);
-ok(ink > 300, `both strokes are on the page (${ink} red pixels)`);
+const ink = await ev(`(() => { const c = document.getElementById('note-canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128 && d[i] + d[i + 1] + d[i + 2] < 150) n++; return n; })()`);
+ok(ink > 300, `both strokes are on the page (${ink} dark pixels; the default pen colour is black)`);
 b.close();
 finish();

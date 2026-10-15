@@ -10,8 +10,19 @@ export const TEMPLATES: { id: PageTemplate; label: string }[] = [
   { id: "dots", label: "Dotted" },
 ];
 
-/** Line / grid / dot spacing, in page units (StarNote's own ruled-line spacing). */
-export const TEMPLATE_SPACING = 86.81;
+/**
+ * Line / grid / dot spacing in page units (one unit = 1/7.07 mm). New notes use 52.5 (about 7.4 mm, 40 lines per 2100-unit
+ * tile); all offered spacings divide 2100, so ruling lines up across tile seams (notebook, infinite canvas). Notes made
+ * before spacing was recorded keep StarNote's own, much wider 86.81 (about 12 mm).
+ */
+export const DEFAULT_SPACING = 52.5;
+export const LEGACY_SPACING = 86.81;
+export const SPACINGS: { id: string; label: string; v: number }[] = [
+  { id: "narrow", label: "Narrow", v: 42 },
+  { id: "medium", label: "Medium", v: DEFAULT_SPACING },
+  { id: "wide", label: "Wide", v: 70 },
+];
+export const spacingOf = (t: { spacing?: number }) => t.spacing ?? LEGACY_SPACING;
 
 /**
  * Paper sizes in page units, portrait. One unit is 1/7.07 mm so that A4's long side is 2100, the size of a StarNote
@@ -23,18 +34,24 @@ export const PAPERS: { id: string; label: string; w: number; h: number }[] = [
   { id: "a6", label: "A6", w: 743, h: 1046 },
   { id: "b5", label: "B5", w: 1244, h: 1768 },
   { id: "letter", label: "Letter", w: 1527, h: 1976 },
+  { id: "tablet", label: "Tablet 4:3", w: 1575, h: 2100 },
   { id: "slide", label: "Slide 16:9", w: 1181, h: 2100 },
   { id: "square", label: "Square", w: 1800, h: 1800 },
 ];
 
-export interface PageFormat { w: number; h: number; template: PageTemplate }
+export interface PageFormat { w: number; h: number; template: PageTemplate; spacing?: number }
 
-export const pageFormat = (paper: string, landscape: boolean, template: PageTemplate): PageFormat => {
+export const pageFormat = (paper: string, landscape: boolean, template: PageTemplate, spacing = DEFAULT_SPACING): PageFormat => {
   const p = PAPERS.find((x) => x.id === paper) ?? PAPERS[0];
-  return landscape ? { w: p.h, h: p.w, template } : { w: p.w, h: p.h, template };
+  return landscape ? { w: p.h, h: p.w, template, spacing } : { w: p.w, h: p.h, template, spacing };
 };
 
 export const DEFAULT_FORMAT: PageFormat = pageFormat("a4", false, "ruled");
+
+/** The three kinds of note: finite pages; a notebook (pages joined into one endless sheet, growing as you write); an infinite canvas. */
+export type NoteKind = "pages" | "notebook" | "infinite";
+/** A notebook page is a full 2100-unit tile, so pages meet without a gap or a seam. */
+export const NOTEBOOK_PAGE = 2100;
 
 /** The preset a size belongs to (to fill the format dialog), or null for a custom size. */
 export function paperOf(w: number, h: number): { paper: string; landscape: boolean } | null {
@@ -76,12 +93,22 @@ export function nextPageTag(doc: StarNoteDocument): string {
   return tag;
 }
 
+/** The tile tag of the 2100-unit grid cell holding a world point (StarNote's own naming: Page[row-col]). */
+export const cellTag = (x: number, y: number) => `Page[${Math.floor(y / 2100)}-${Math.floor(x / 2100)}]`;
+
+/** A tile of an infinite canvas: the whole grid cell is the page. */
+export function newCanvasTile(tag: string, template: PageTemplate, spacing: number): ParsedTile {
+  const rect = gridRectOf(tag);
+  return { pageTag: tag, rect, pageRect: { ...rect }, template, spacing, saved: false, strokes: [], textBoxes: [] };
+}
+
 export function newPageTile(tag: string, f: PageFormat): ParsedTile {
   return {
     pageTag: tag,
     rect: { left: 0, top: 0, right: 2100, bottom: 2100 },
     pageRect: { left: 0, top: 0, right: f.w, bottom: f.h },
     template: f.template,
+    spacing: f.spacing ?? DEFAULT_SPACING,
     saved: false,
     strokes: [],
     textBoxes: [],
@@ -108,14 +135,16 @@ export function relayout(doc: StarNoteDocument) {
     const px = (maxW - w) / 2;
     t.rect = { left: px - ox, top: y - oy, right: px - ox + 2100, bottom: y - oy + 2100 };
     t.pageRect = { left: px, top: y, right: px + w, bottom: y + h };
-    y += h + PAGE_GAP;
+    y += h + (doc.continuous ? 0 : PAGE_GAP);
   }
 }
 
 /** What the sidecar file records: one entry per page, in order. */
 export const sidecarOf = (doc: StarNoteDocument) => ({
   version: 1,
-  pages: [...doc.tiles.values()].map((t) => ({ tag: t.pageTag, ...sizeOfPage(t), template: t.template ?? "ruled" })),
+  ...(doc.continuous ? { continuous: true } : {}),
+  ...(doc.infinite ? { layout: "canvas", template: doc.infinite.template, spacing: doc.infinite.spacing } : {}),
+  pages: [...doc.tiles.values()].map((t) => ({ tag: t.pageTag, ...sizeOfPage(t), template: t.template ?? "ruled", ...(t.spacing ? { spacing: t.spacing } : {}) })),
 });
 
 /** Draws a page template (lines, grid or dots) over the page rectangle `pr`. Nothing for a blank page. */
@@ -123,21 +152,23 @@ export function drawPageTemplate(
   ctx: CanvasRenderingContext2D,
   kind: PageTemplate,
   pr: { left: number; top: number; right: number; bottom: number },
-  style: { line: string; dot: string; lineWidth: number; dotRadius: number }
+  style: { line: string; dot: string; lineWidth: number; dotRadius: number },
+  step = LEGACY_SPACING,
+  seamless = false // pages that continue into each other: ruling starts on the page's own top edge, so the seam has its line
 ) {
   if (kind === "blank") return;
-  const step = TEMPLATE_SPACING;
+  const y0 = seamless ? pr.top : pr.top + step, x0 = seamless ? pr.left : pr.left + step;
   if (kind === "dots") {
     ctx.fillStyle = style.dot;
-    for (let y = pr.top + step; y < pr.bottom - step / 2; y += step) {
-      for (let x = pr.left + step; x < pr.right - step / 2; x += step) { ctx.beginPath(); ctx.arc(x, y, style.dotRadius, 0, Math.PI * 2); ctx.fill(); }
+    for (let y = y0; y < pr.bottom - (seamless ? 0 : step / 2); y += step) {
+      for (let x = x0; x < pr.right - (seamless ? 0 : step / 2); x += step) { ctx.beginPath(); ctx.arc(x, y, style.dotRadius, 0, Math.PI * 2); ctx.fill(); }
     }
     return;
   }
   ctx.strokeStyle = style.line;
   ctx.lineWidth = style.lineWidth;
   ctx.beginPath();
-  for (let y = pr.top + step; y < pr.bottom; y += step) { ctx.moveTo(pr.left, y); ctx.lineTo(pr.right, y); }
-  if (kind === "grid") for (let x = pr.left + step; x < pr.right; x += step) { ctx.moveTo(x, pr.top); ctx.lineTo(x, pr.bottom); }
+  for (let y = y0; y < pr.bottom; y += step) { ctx.moveTo(pr.left, y); ctx.lineTo(pr.right, y); }
+  if (kind === "grid") for (let x = x0; x < pr.right; x += step) { ctx.moveTo(x, pr.top); ctx.lineTo(x, pr.bottom); }
   ctx.stroke();
 }
