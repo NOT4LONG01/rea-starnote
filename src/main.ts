@@ -550,7 +550,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       root.appendChild(popItem("New note", "plus", () => { closePopover(); newNote(lastFormat()); }));
     });
   });
-  $("canvas-container").addEventListener("pointerdown", () => { if (compact.matches && optionsOpen && !renderer.hasSelection()) { optionsOpen = false; renderToolOptions(); } }, true); // a flyout must not sit on the page while you draw
+  $("canvas-container").addEventListener("pointerdown", () => { if (optionsOpen && !renderer.hasSelection()) { optionsOpen = false; renderToolOptions(); } }, true); // a flyout must not sit on the page while you draw
 
   renderer.onChange = () => {
     if (!active) return;
@@ -581,41 +581,35 @@ document.addEventListener("DOMContentLoaded", async () => {
   type Tool = "pen" | "eraser" | "pan" | "lasso" | "shape" | "text";
   const TOOLS: Tool[] = ["pen", "eraser", "lasso", "shape", "text", "pan"];
 
-  // ----- colors: pen and highlighter each remember their own color and which colors get used most
+  // ----- colors: pen and highlighter each keep their own current color and their own 4 quick colors, in the order the user set
   const penColors = { ink: pref.get("sn.ink", "#b33333"), hl: pref.get("sn.hl", penById("highlighter").color!) };
-  const DEFAULT_COLORS = {
-    ink: ["#000000", "#b33333", "#2f4fd0", "#0b8a5f", "#e6a817", "#7c3aed"],
-    hl: ["#f5d742", "#7ee081", "#ff9ecb", "#7cc4ff", "#ffb366", "#c9a7ff"],
-  };
   type Kind = "ink" | "hl";
-  let use: Record<Kind, Record<string, number>> = { ink: {}, hl: {} };
-  try { const u = JSON.parse(pref.get("sn.colorUse", "{}")); use = { ink: u.ink ?? {}, hl: u.hl ?? {} }; } catch { /* start counting afresh */ }
-  const bump = (kind: Kind, color: string) => {
-    const c = color.toLowerCase();
-    use[kind][c] = (use[kind][c] ?? 0) + 1;
-    pref.set("sn.colorUse", JSON.stringify(use));
-  };
-  // A color order the user set by dragging stays as it is (per kind) until "Auto order" is tapped
-  let pinned: Partial<Record<Kind, string[]>> = {};
-  try { const o = JSON.parse(pref.get("sn.colorOrder", "{}")); pinned = { ink: Array.isArray(o.ink) ? o.ink : undefined, hl: Array.isArray(o.hl) ? o.hl : undefined }; } catch { /* auto order */ }
-  const savePinned = () => pref.set("sn.colorOrder", JSON.stringify(pinned));
-  /** The colors offered for a pen kind: the order the user set, else the most used first, topped up with the defaults. */
-  const quickColors = (kind: Kind): string[] => {
-    const fixed = pinned[kind];
-    if (fixed) return [...fixed, ...DEFAULT_COLORS[kind].filter((c) => !fixed.includes(c))].slice(0, 6);
-    const used = Object.entries(use[kind]).sort((a, b) => b[1] - a[1]).map((e) => e[0]).slice(0, 6);
-    return [...used, ...DEFAULT_COLORS[kind].filter((c) => !used.includes(c))].slice(0, 6);
-  };
+  const QUICK_COLORS = 4;
+  const DEFAULT_COLORS: Record<Kind, string[]> = { ink: ["#000000", "#b33333", "#2f4fd0", "#0b8a5f"], hl: ["#f5d742", "#7ee081", "#ff9ecb", "#7cc4ff"] };
+  const colorOrder: Record<Kind, string[]> = { ink: [...DEFAULT_COLORS.ink], hl: [...DEFAULT_COLORS.hl] };
+  try {
+    const saved = JSON.parse(pref.get("sn.colorOrder", "{}"));
+    for (const k of ["ink", "hl"] as const) if (Array.isArray(saved[k])) colorOrder[k] = [...new Set<string>([...saved[k], ...DEFAULT_COLORS[k]])].slice(0, QUICK_COLORS);
+  } catch { /* defaults */ }
+  const saveColorOrder = () => pref.set("sn.colorOrder", JSON.stringify(colorOrder));
   const isHighlighter = () => renderer.penType.alpha < 1;
   const applyPenColor = () => {
     renderer.penColor = isHighlighter() ? penColors.hl : penColors.ink;
     $("tool-pen").style.setProperty("--pen-color", renderer.penColor);
   };
+  /** The pen button shows the pen type in use. */
+  function syncPenButton() {
+    const icon = $("tool-pen").querySelector("i")!;
+    icon.dataset.icon = renderer.penType.id;
+    icon.innerHTML = "";
+    hydrateIcons($("tool-pen"));
+    $("tool-pen").title = `${renderer.penType.label}. Tap again to show or hide its colors and sizes`;
+  }
 
-  // ----- the options bar under the toolbar: only what the active tool offers
+  // ----- the choices of the tool in use, as a popover under (or, on a wide phone, beside) its button
   const optBox = $("tool-options");
-  let optionsOpen = true;
-  const compact = window.matchMedia("(orientation: landscape) and (max-height: 520px)"); // wide phone: options are a flyout over the page
+  let optionsOpen = false;
+  const compact = window.matchMedia("(orientation: landscape) and (max-height: 520px)"); // wide phone: tools are a rail on the left
   const group = (label?: string) => { const g = el("div", "opt-group"); if (label) g.appendChild(el("span", "opt-label", label)); optBox.appendChild(g); return g; };
   const chipButton = (parent: HTMLElement, label: string, active: boolean, run: () => void, extra = "") => {
     const b = el("button", `opt-chip${active ? " active" : ""} ${extra}`.trim(), label);
@@ -624,24 +618,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
   function chooseColor(color: string) {
     color = color.toLowerCase();
+    if (renderer.hasSelection()) { renderer.recolorSelection(color); return; }
     const tool = renderer.activeTool;
-    if (renderer.hasSelection()) { renderer.recolorSelection(color); bump("ink", color); return; }
     const kind: Kind = (tool === "pen" || tool === "shape") && isHighlighter() ? "hl" : "ink";
     penColors[kind] = color;
     pref.set(kind === "hl" ? "sn.hl" : "sn.ink", color);
-    if (pinned[kind] && !quickColors(kind).includes(color)) { // a new color takes the last slot; the rest of the order stays
-      const l = quickColors(kind);
-      l[l.length - 1] = color;
-      pinned[kind] = l;
-      savePinned();
-    }
-    bump(kind, color);
+    if (!colorOrder[kind].includes(color)) { colorOrder[kind][QUICK_COLORS - 1] = color; saveColorOrder(); } // a new color takes the last slot
     applyPenColor();
     renderToolOptions();
   }
   let swatchDragged = false;
-  /** Drag a color swatch sideways to a new place; the new order is kept (pinned) for that pen kind. */
-  function dragSwatch(e: PointerEvent, b: HTMLElement, index: number, all: HTMLElement[], kind: Kind, list: string[]) {
+  /** Drag a color swatch sideways to a new place; the order is kept for that pen kind. */
+  function dragSwatch(e: PointerEvent, b: HTMLElement, index: number, all: HTMLElement[], kind: Kind) {
     if (e.button !== 0) return;
     const x0 = e.clientX;
     const centers = all.map((s) => { const r = s.getBoundingClientRect(); return r.left + r.width / 2; });
@@ -663,16 +651,25 @@ document.addEventListener("DOMContentLoaded", async () => {
       let to = 0;
       centers.forEach((c, i) => { if (Math.abs(c - here) < Math.abs(centers[to] - here)) to = i; });
       if (to !== index) {
-        const next = [...list];
+        const next = [...colorOrder[kind]];
         next.splice(to, 0, ...next.splice(index, 1));
-        pinned[kind] = next;
-        savePinned();
+        colorOrder[kind] = next;
+        saveColorOrder();
       }
       renderToolOptions();
     };
     b.addEventListener("pointermove", move);
     b.addEventListener("pointerup", up);
     b.addEventListener("pointercancel", up);
+  }
+
+  function positionOptions(anchor: HTMLElement) {
+    const host = $("view-editor").getBoundingClientRect(), a = anchor.getBoundingClientRect();
+    const w = optBox.offsetWidth, h = optBox.offsetHeight;
+    const left = compact.matches ? a.right - host.left + 6 : a.left - host.left;
+    const top = compact.matches ? a.top - host.top - 4 : a.bottom - host.top + 6;
+    optBox.style.left = `${Math.max(8, Math.min(left, host.width - w - 8))}px`;
+    optBox.style.top = `${Math.max(8, Math.min(top, host.height - h - 8))}px`;
   }
 
   function renderToolOptions() {
@@ -695,25 +692,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         g.appendChild(b);
       }
       hydrateIcons(g);
-      const hl = isHighlighter();
-      const sg = group(hl ? "Opacity" : "Pressure");
-      const range = document.createElement("input");
-      range.type = "range";
-      range.className = "opt-range";
-      range.min = hl ? "15" : "0";
-      range.max = hl ? "70" : "100";
-      range.value = String(Math.round((hl ? renderer.penType.alpha : renderer.penType.sensitivity) * 100));
-      range.title = hl ? "How transparent the highlighter is" : "Steady (like a ballpoint or marker) to pressure-sensitive (like a fountain pen)";
-      range.setAttribute("aria-label", range.title);
-      range.addEventListener("input", () => {
-        const v = Number(range.value) / 100;
-        penSetting[renderer.penType.id] = v;
-        pref.set(`sn.pen.${renderer.penType.id}`, String(v));
-        renderer.penType = penFor(renderer.penType.id, v);
-      });
-      sg.appendChild(el("span", "opt-label", hl ? "clear" : "steady"));
-      sg.appendChild(range);
-      sg.appendChild(el("span", "opt-label", hl ? "solid" : "sensitive"));
     }
     if (!sel && tool === "shape") {
       const g = group("Shape");
@@ -730,26 +708,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       const g = group(sel ? undefined : kind === "hl" ? "Highlighter colors" : "Colors");
       g.classList.add("swatches");
       const current = (kind === "hl" ? penColors.hl : penColors.ink).toLowerCase();
-      const list = quickColors(kind);
       const buttons: HTMLElement[] = [];
-      list.forEach((c, i) => {
+      colorOrder[kind].forEach((c, i) => {
         const b = el("button", `swatch${!sel && c === current ? " active" : ""}`);
         b.style.setProperty("--c", c);
         b.title = sel ? c : `${c} (drag to reorder)`;
         b.addEventListener("click", () => { if (!swatchDragged) chooseColor(c); });
-        if (!sel) b.addEventListener("pointerdown", (e) => dragSwatch(e, b, i, buttons, kind, list));
+        if (!sel) b.addEventListener("pointerdown", (e) => dragSwatch(e, b, i, buttons, kind));
         g.appendChild(b);
         buttons.push(b);
       });
-      const custom = el("label", "swatch custom");
-      custom.title = "Any color";
-      const input = document.createElement("input");
-      input.type = "color";
-      input.value = current;
-      input.addEventListener("change", () => chooseColor(input.value));
-      custom.appendChild(input);
-      g.appendChild(custom);
-      if (!sel && pinned[kind]) chipButton(g, "Auto order", false, () => { delete pinned[kind]; savePinned(); renderToolOptions(); });
     }
     if (sel || tool === "pen" || tool === "shape") {
       const g = group("Size");
@@ -770,11 +738,49 @@ document.addEventListener("DOMContentLoaded", async () => {
         g.appendChild(b);
       }
     }
+    positionOptions(sel ? $("tool-lasso") : $(`tool-${tool}`));
   }
 
+  // ----- pen settings: the less-used controls live in their own popover, opened from the small button next to the pen
+  $("btn-pen-detail").dataset.pop = "1";
+  $("btn-pen-detail").addEventListener("click", (e) => {
+    const anchor = e.currentTarget as HTMLElement;
+    optionsOpen = false;
+    renderToolOptions();
+    openPopover(anchor, (root) => {
+      const hl = isHighlighter();
+      root.append(el("div", "pop-title", `${renderer.penType.label} settings`));
+      const row = el("div", "pop-row");
+      row.appendChild(el("span", "", hl ? "Opacity" : "Pressure"));
+      const range = el("input");
+      range.type = "range";
+      range.min = hl ? "15" : "0";
+      range.max = hl ? "70" : "100";
+      range.value = String(Math.round((hl ? renderer.penType.alpha : renderer.penType.sensitivity) * 100));
+      range.setAttribute("aria-label", hl ? "Opacity" : "Pressure: steady to sensitive");
+      range.addEventListener("input", () => {
+        const v = Number(range.value) / 100;
+        penSetting[renderer.penType.id] = v;
+        pref.set(`sn.pen.${renderer.penType.id}`, String(v));
+        renderer.penType = penFor(renderer.penType.id, v);
+      });
+      row.appendChild(range);
+      root.appendChild(row);
+      root.appendChild(el("div", "pop-hint", hl ? "from clear to solid" : "from steady (ballpoint, marker) to pressure-sensitive (fountain pen)"));
+      const crow = el("label", "pop-row");
+      crow.appendChild(el("span", "", "Custom color"));
+      const color = el("input");
+      color.type = "color";
+      color.value = (hl ? penColors.hl : penColors.ink).toLowerCase();
+      color.addEventListener("change", () => chooseColor(color.value));
+      crow.appendChild(color);
+      root.appendChild(crow);
+    });
+  });
+
   function clearCurrentPage() {
-    const n = renderer.clearPage();
-    showToast(n ? `Page cleared (${n} stroke${n > 1 ? "s" : ""}). Undo brings it back.` : "This page has no drawings.", n ? "success" : "info");
+    const cleared = renderer.clearPage() > 0;
+    showToast(cleared ? "Page cleared. Undo brings it back." : "This page has no drawings.", cleared ? "success" : "info");
   }
 
   function setTool(tool: Tool) {
@@ -810,6 +816,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function setPenType(id: string) {
     renderer.penType = penFor(penById(id).id, penSetting[penById(id).id]);
     applyPenColor();
+    syncPenButton();
     pref.set("sn.pen", id);
     setTool("pen");
     renderToolOptions();
@@ -820,12 +827,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     setTool("shape");
     renderToolOptions();
   }
-  renderer.onStrokeDrawn = (st) => {
-    const kind: Kind = st.alpha !== undefined && st.alpha < 1 ? "hl" : "ink";
-    bump(kind, st.color);
-    if (!pinned[kind]) renderToolOptions(); // the most-used order may have changed
-  };
-
   // ---------- page format dialog
   const pmEl = $("page-modal");
   const lastFormat = (): PageFormat => {
@@ -1045,6 +1046,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderer.shapeKind = (SHAPE_KINDS.find((k) => k.id === pref.get("sn.shape", "rect"))?.id ?? "rect") as ShapeKind;
   renderer.penType = penFor(penById(pref.get("sn.pen", "pen")).id, penSetting[penById(pref.get("sn.pen", "pen")).id]);
   applyPenColor();
+  syncPenButton();
   setTool("pen");
 
   $("btn-pen-settings").dataset.pop = "1";
@@ -1102,7 +1104,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { closePopover(); modal.classList.add("hidden"); $("zotero-modal").classList.add("hidden"); if (!pmEl.classList.contains("hidden")) $("pm-cancel").click(); }
+    if (e.key === "Escape") { closePopover(); if (optionsOpen) { optionsOpen = false; renderToolOptions(); } modal.classList.add("hidden"); $("zotero-modal").classList.add("hidden"); if (!pmEl.classList.contains("hidden")) $("pm-cancel").click(); }
     if (!inEditor() || (e.target as HTMLElement).closest("input,textarea")) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? renderer.redo() : renderer.undo(); }

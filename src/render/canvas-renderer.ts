@@ -52,8 +52,6 @@ export class CanvasRenderer {
   public shapeKind: ShapeKind = "rect";
   /** How close (screen px) the eraser has to be to a stroke to take it. */
   public eraserReach = 14;
-  /** Fired for every stroke the user finishes drawing (to learn which colors are used most). */
-  public onStrokeDrawn?: (st: ParsedStroke) => void;
   public penColor: string = "#B33333";
   public penWidth: number = 5.0;
   /** The pen type in use: scales the width and sets opacity and pressure response of new strokes. */
@@ -702,7 +700,6 @@ export class CanvasRenderer {
     if (st.points.some((p) => !this.isOnPage(p.x, p.y))) { this.onNotice?.("The shape has to stay on the page."); this.render(); return; }
     this.userDrawnStrokes.push(st);
     this.commit({ kind: "draw", stroke: st });
-    this.onStrokeDrawn?.(st);
     this.paintFinished(st);
   }
 
@@ -726,7 +723,6 @@ export class CanvasRenderer {
     this.userDrawnStrokes.push(stroke);
     this.commit({ kind: "draw", stroke });
     this.currentStrokePoints = [];
-    this.onStrokeDrawn?.(stroke);
     this.paintFinished(stroke);
   }
 
