@@ -22,4 +22,4 @@ Cargo.toml). Tag releases `v0.N.P` on `main` and add them to [CHANGELOG.md](../C
 
 ## QA bundles
 A retest bundle is a zip of the repo without `node_modules`, `dist`, `dist-cli`, `src-tauri/target`, `artifacts` and
-`qa/reports`, named `rea-starnote-qa-N.zip`, with a matching `qa/RETEST_N.md`. A signed APK ships alongside it.
+`qa/reports`, `artifacts`, named `rea-starnote-qa-N.zip`, with a matching `qa/RETEST_N.md`. A signed APK ships alongside it.

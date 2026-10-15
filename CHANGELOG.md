@@ -2,7 +2,7 @@
 
 Versions follow [SemVer](https://semver.org) and stay 0.x until 1.0. Newest first.
 
-## Unreleased (heading to 0.2.0)
+## 0.2.0
 ### Added
 - Command line (`rea-starnote info | text | validate | export | new`), see docs/cli.md.
 - Android app (Tauri Android) with a wide-phone layout and a "Save as" bridge; fullscreen.
