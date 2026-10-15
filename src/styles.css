@@ -388,6 +388,7 @@ body.eink-mode .sb-thumb { background: #000; }
 .sel-actions { display: contents; }
 
 /* ---------- text / math editor ---------- */
+.text-ghost { position: absolute; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; border: 0; padding: 0; resize: none; overflow: hidden; pointer-events: none; font-size: 16px; z-index: 5; }
 .text-editor {
   position: absolute; z-index: 20; width: min(360px, calc(100% - 20px));
   background: var(--bg-bar); border: 1px solid #4a4a4a; border-radius: 12px;
