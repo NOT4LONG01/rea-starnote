@@ -1,5 +1,6 @@
 import { StarNoteDocument, ParsedTile } from "../model/note-loader";
-import { drawPageTemplate } from "../model/pages";
+import { drawPageTemplate, spacingOf } from "../model/pages";
+import { isMathText } from "../model/math";
 import { interpolateStrokePoints, generateRibbonGeometry, renderStrokeToCanvas } from "../model/stroke-interpolator";
 
 /** Metadata shown in the library grid. The .note bytes live in a separate store so listing stays cheap. */
@@ -129,7 +130,7 @@ export function renderThumbnail(doc: StarNoteDocument, w = 300, h = 400): string
   if (tile?.backgroundImage) {
     ctx.drawImage(tile.backgroundImage, rect.left, rect.top, rw, rh);
   } else {
-    drawPageTemplate(ctx, tile?.template ?? "ruled", rect, { line: "#e3e6ea", dot: "#c5cad1", lineWidth: 3, dotRadius: 5.2 });
+    drawPageTemplate(ctx, tile?.template ?? "ruled", rect, { line: "#e3e6ea", dot: "#c5cad1", lineWidth: 3, dotRadius: 5.2 }, tile ? spacingOf(tile) : undefined, !!doc.continuous);
   }
 
   if (tile) {
@@ -141,10 +142,16 @@ export function renderThumbnail(doc: StarNoteDocument, w = 300, h = 400): string
       ctx.globalAlpha = 1;
     }
     for (const tb of tile.textBoxes ?? []) {
+      if (isMathText(tb.text)) { // a formula is not typeset here: a soft block of its size, not its LaTeX source
+        ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+        ctx.fillRect(tb.rect.left, tb.rect.top, tb.rect.right - tb.rect.left, tb.rect.bottom - tb.rect.top);
+        continue;
+      }
       ctx.fillStyle = tb.color;
-      ctx.font = `${Math.max(16, tb.fontSize)}px system-ui, sans-serif`;
+      const fs = Math.max(16, tb.fontSize);
+      ctx.font = `${tb.isItalic ? "italic " : ""}${tb.isBold ? "bold " : ""}${fs}px system-ui, sans-serif`;
       ctx.textBaseline = "top";
-      ctx.fillText(tb.text.split("\n")[0], tb.rect.left, tb.rect.top);
+      tb.text.split("\n").forEach((line, i) => ctx.fillText(line, tb.rect.left, tb.rect.top + i * fs * 1.25));
     }
   }
   ctx.restore();
