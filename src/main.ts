@@ -51,6 +51,7 @@ const ICONS: Record<string, string> = {
   highlighter: '<path d="M9 3l7 7-6 6-3-1-3 3H2l3-4-1-3z"/><path d="M14 12l6-6M5 21h15"/>',
   lasso: '<path d="M12 4c-5 0-9 2.4-9 5.5S7 15 12 15s9-2.4 9-5.5S17 4 12 4z" stroke-dasharray="3 2.4"/><path d="M9 15c-.8 2.6.6 5 3 5"/>',
   paste: '<rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V4a1 1 0 011-1h4a1 1 0 011 1v1M9 12h6M9 16h6"/>',
+  pagecfg: '<path d="M6 3h8l4 4v6"/><path d="M6 3v18h7"/><circle cx="18" cy="18" r="2.5"/><path d="M18 13.5v2M18 20.5v2M13.5 18h2M20.5 18h2"/>',
   quick: '<path d="M13 3L4 14h7l-1 7 9-11h-7z"/>',
   pages: '<rect x="3" y="4" width="6" height="16" rx="1.5"/><path d="M12 7h9M12 12h9M12 17h6"/>',
   folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
@@ -640,33 +641,51 @@ document.addEventListener("DOMContentLoaded", async () => {
     btn.classList.toggle("on", !!parent && railOn());
     rail.classList.toggle("hidden", !parent || !railOn());
     if (!parent || !railOn()) return;
-    const siblings = () => {
-      const l = items.filter((i) => !i.trashed && !isFolder(i) && i.parentId === parent.id);
-      for (const t of sessions) if (t.item.parentId === parent.id && !l.some((i) => i.id === t.item.id)) l.push(t.item); // pages open in tabs but not saved yet
+    // the whole notebook: its own pages first, then each section (and deeper notebook) as a heading with its pages
+    const nb = rootNotebookOf(items, parent.id).root ?? parent;
+    const notesIn = (folderId: string) => {
+      const l = items.filter((i) => !i.trashed && !isFolder(i) && i.parentId === folderId);
+      for (const t of sessions) if (t.item.parentId === folderId && !l.some((i) => i.id === t.item.id)) l.push(t.item); // pages open in tabs but not saved yet
       return l;
     };
+    const groups: { folder: LibraryItem; depth: number }[] = [{ folder: nb, depth: 0 }];
+    const walk = (id: string, depth: number) => { for (const f of items.filter((i) => isFolder(i) && !i.trashed && i.parentId === id).sort(byPlace)) { groups.push({ folder: f, depth }); walk(f.id, depth + 1); } };
+    walk(nb.id, 1);
     rail.innerHTML = "";
-    rail.style.setProperty("--c", parent.color ?? DEFAULT_TAB);
+    rail.style.setProperty("--c", nb.color ?? DEFAULT_TAB);
     const head = el("div", "rail-head");
-    head.append(el("span", "", parent.title));
+    head.append(el("span", "", nb.title));
     const close = el("button", "icon-btn");
     close.title = "Hide pages";
     close.innerHTML = '<i data-icon="close"></i>';
     close.addEventListener("click", () => { pref.set("sn.rail", "0"); renderRail(); });
     head.appendChild(close);
     const list = el("div", "rail-list");
-    for (const p of siblings().sort(byPlace)) {
-      const b = el("button", `rail-item${p.id === active!.item.id ? " current" : ""}`);
-      b.append(el("b", "", p.title), el("small", "", fmtDate(p.modified)));
-      b.addEventListener("click", () => { if (p.id !== active?.item.id) void openItem(p.id); });
-      if (items.some((i) => i.id === p.id)) reorderable(b, p, () => siblings().filter((x) => items.some((i) => i.id === x.id))); // an unsaved page can't be reordered yet
-      list.appendChild(b);
+    for (const { folder, depth } of groups) {
+      const pages = notesIn(folder.id);
+      if (depth > 0) {
+        const h = el("div", "rail-group", folder.title);
+        h.style.setProperty("--c", folder.color ?? DEFAULT_TAB);
+        h.style.paddingLeft = `${4 + (depth - 1) * 12}px`;
+        list.appendChild(h);
+      } else if (!pages.length) continue;
+      for (const p of pages.sort(byPlace)) {
+        const b = el("button", `rail-item${p.id === active!.item.id ? " current" : ""}`);
+        b.style.paddingLeft = `${10 + Math.max(0, depth - 1) * 12}px`;
+        b.append(el("b", "", p.title), el("small", "", fmtDate(p.modified)));
+        b.addEventListener("click", () => { if (p.id !== active?.item.id) void openItem(p.id); });
+        if (items.some((i) => i.id === p.id)) reorderable(b, p, () => notesIn(folder.id).filter((x) => items.some((i) => i.id === x.id))); // an unsaved page can't be reordered yet
+        list.appendChild(b);
+      }
+      if (depth > 0 && !pages.length) list.appendChild(el("div", "rail-empty", "No pages"));
     }
     const add = el("button", "btn btn-sm rail-add", "+ Page");
+    add.title = `New page in ${parent.title}`;
     add.addEventListener("click", () => { ui.folder = parent.id; newNote(lastFormat(), lastKind()); });
     rail.append(head, list, add);
     hydrateIcons(rail);
   }
+
 
   async function duplicateItem(item: LibraryItem) {
     const bytes = await library.getBytes(item.id);
@@ -908,6 +927,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     $<HTMLButtonElement>("tool-undo").disabled = !renderer.canUndo();
     $<HTMLButtonElement>("tool-redo").disabled = !renderer.canRedo();
     renderRail();
+    renderPagePanel();
   }
 
   function renderTabs() {
@@ -961,6 +981,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const { index, total } = renderer.pageInfo();
     const label = `${index + 1} / ${total}`;
     if (label !== lastPageLabel) { lastPageLabel = label; $("page-label").textContent = label; resetFit(); }
+    if (panelOn() && inEditor() && `${index}/${total}` !== panelAt) renderPagePanel();
     $("pagenav").classList.toggle("hidden", renderer.isInfinite());
     $("add-page-pill").classList.toggle("hidden", !(renderer.isStack() && renderer.endOfNoteVisible() && inEditor()));
   };
@@ -1366,6 +1387,82 @@ document.addEventListener("DOMContentLoaded", async () => {
       }, { danger: true }));
     });
   });
+
+  // ---------- page panel (right): the page's format, live, and the page actions; toggled from the top bar
+  const panelOn = () => pref.get("sn.pagepanel", "0") === "1";
+  let panelScope: "this" | "all" = "this", panelAt = "";
+  $("btn-page-panel").addEventListener("click", () => { pref.set("sn.pagepanel", panelOn() ? "0" : "1"); renderPagePanel(); });
+  function renderPagePanel() {
+    const box = $("page-panel");
+    $("btn-page-panel").classList.toggle("on", panelOn());
+    box.classList.toggle("hidden", !panelOn() || !inEditor());
+    if (!panelOn() || !inEditor()) return;
+    box.innerHTML = "";
+    const head = el("div", "pp-head");
+    const close = el("button", "icon-btn");
+    close.title = "Close";
+    close.innerHTML = '<i data-icon="close"></i>';
+    close.addEventListener("click", () => { pref.set("sn.pagepanel", "0"); renderPagePanel(); });
+    const chips = (label: string, list: { id: string; label: string }[], current: string | null, pick: (id: string) => void, disabled = false) => {
+      box.appendChild(el("div", "pm-label", label));
+      const g = el("div", "pm-chips");
+      for (const it of list) {
+        const b = el("button", it.id === current ? "active" : "", it.label);
+        b.disabled = disabled;
+        b.addEventListener("click", () => pick(it.id));
+        g.appendChild(b);
+      }
+      box.appendChild(g);
+    };
+    const spacingId = (v?: number) => SPACINGS.find((x) => Math.abs(x.v - (v ?? -1)) < 0.01)?.id ?? null;
+
+    const canvas = renderer.canvasStyle();
+    if (canvas) { // an infinite canvas: one style for the whole sheet
+      head.append(el("span", "", "Infinite canvas"), close);
+      box.appendChild(head);
+      chips("Page style", TEMPLATES, canvas.template, (t) => { renderer.setCanvasStyle(t as PageTemplate, canvas.spacing); renderPagePanel(); });
+      if (canvas.template !== "blank") chips("Line spacing", SPACINGS, spacingId(canvas.spacing), (id) => { renderer.setCanvasStyle(canvas.template, SPACINGS.find((x) => x.id === id)!.v); renderPagePanel(); });
+      hydrateIcons(box);
+      return;
+    }
+    if (!renderer.isStack()) {
+      head.append(el("span", "", "Page"), close);
+      box.append(head, el("p", "pp-note", "This note is a free-form StarNote canvas: its pages can't be changed here."));
+      hydrateIcons(box);
+      return;
+    }
+    const { index: i, total } = renderer.pageInfo();
+    panelAt = `${i}/${total}`;
+    const f = renderer.pageFormatAt(i)!, locked = renderer.hasBackgroundAt(i), paper = paperOf(f.w, f.h);
+    head.append(el("span", "", `Page ${i + 1} of ${total}`), close);
+    box.appendChild(head);
+    const apply = (next: Partial<PageFormat>) => {
+      const idx = panelScope === "all" ? [...Array(total).keys()] : [i];
+      renderer.setPageFormat(idx, next);
+      pref.set("sn.format", JSON.stringify({ ...f, ...next }));
+      renderPagePanel();
+    };
+    chips("Apply to", [{ id: "this", label: "This page" }, { id: "all", label: "All pages" }], panelScope, (id) => { panelScope = id as "this" | "all"; renderPagePanel(); });
+    const land = paper ? paper.landscape : f.w > f.h;
+    chips("Paper", PAPERS, paper?.paper ?? null, (id) => { const n = pageFormat(id, land, f.template); apply({ w: n.w, h: n.h }); }, locked);
+    chips("Orientation", [{ id: "portrait", label: "Portrait" }, { id: "landscape", label: "Landscape" }], land ? "landscape" : "portrait", (id) => { if ((id === "landscape") !== land) apply({ w: f.h, h: f.w }); }, locked);
+    chips("Page style", TEMPLATES, f.template, (t) => apply({ template: t as PageTemplate }));
+    if (f.template !== "blank") chips("Line spacing", SPACINGS, spacingId(f.spacing), (id) => apply({ spacing: SPACINGS.find((x) => x.id === id)!.v }));
+    if (locked) box.appendChild(el("p", "pp-note", "A PDF page keeps its size; only its style can change."));
+    box.appendChild(el("div", "pm-label", "Pages"));
+    const acts = el("div", "pp-actions");
+    const act = (label: string, run: () => void, cls = "", off = false) => { const b = el("button", `btn btn-sm ${cls}`, label); b.disabled = off; b.addEventListener("click", () => { run(); renderPagePanel(); }); acts.appendChild(b); };
+    act("+ Page after", () => addNewPage(i));
+    act("+ Page at end", () => addNewPage(total - 1));
+    act("Move up", () => renderer.movePage(i, -1), "", i === 0);
+    act("Move down", () => renderer.movePage(i, 1), "", i === total - 1);
+    act("Delete page", () => {
+      if (total <= 1) { showToast("A note needs at least one page.", "info"); return; }
+      if (confirm(`Delete page ${i + 1}?\n\nIts drawings and text are removed from the note. This can't be undone.`)) renderer.deletePage(i);
+    }, "btn-danger wide", total <= 1);
+    box.appendChild(acts);
+    hydrateIcons(box);
+  }
 
   // ---------- text & math editor
   const MATH_SNIPPETS: [string, string][] = [

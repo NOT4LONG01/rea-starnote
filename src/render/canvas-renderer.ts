@@ -957,6 +957,18 @@ export class CanvasRenderer {
 
   public isStack(): boolean { return this.doc?.layout === "stack"; }
   public isInfinite(): boolean { return !!this.doc?.infinite; }
+  public canvasStyle(): { template: PageTemplate; spacing: number } | null { return this.doc?.infinite ? { ...this.doc.infinite } : null; }
+
+  /** Infinite canvas: one page style for the whole sheet (and every tile in the file). */
+  public setCanvasStyle(template: PageTemplate, spacing: number) {
+    const d = this.doc;
+    if (!d?.infinite) return;
+    d.infinite = { template, spacing };
+    for (const t of d.tiles.values()) { t.template = template; t.spacing = spacing; }
+    d.pagesChanged = true;
+    this.onChange?.();
+    this.render();
+  }
 
   /** Infinite canvas: make sure every grid cell the points touch has a tile (the archive stores ink per tile). */
   private ensureTiles(points: { x: number; y: number }[]) {

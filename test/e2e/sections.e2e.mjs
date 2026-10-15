@@ -32,6 +32,7 @@ await ev(`document.querySelector('#page-rail .rail-add').click()`); await sleep(
 await draw(); await rename("Dynamics");
 const rail = await ev(`[...document.querySelectorAll('#page-rail .rail-item b')].map(e => e.textContent + (e.parentElement.classList.contains('current') ? '*' : '')).join(',')`);
 ok(rail === "Kinematics,Dynamics*", `+ Page in the rail adds the next page; the rail marks the open one (${rail})`);
+ok(await ev(`[...document.querySelectorAll("#page-rail .rail-group")].map(e => e.textContent).join()`) === "Mechanics", "the rail shows the whole notebook, sections as headings");
 await ev(`[...document.querySelectorAll('#page-rail .rail-item')].find(e => e.textContent.includes('Kinematics')).click()`); await sleep(1200);
 ok(await ev(`document.getElementById('doc-title').textContent`) === "Kinematics", "clicking a page in the rail opens it");
 await click("#btn-back"); await sleep(800);
