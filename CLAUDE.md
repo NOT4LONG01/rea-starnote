@@ -33,4 +33,4 @@ No tags, release branches or version bumps for a QA build: bundle whatever is on
 `git archive --format=zip --prefix=rea-starnote/ -o artifacts/rea-starnote-qa-N.zip HEAD`, with `qa/RETEST_N.md` written first.
 Copy to Yonsei Drive `My Drive/QA` via GVFS (`/run/user/1000/gvfs/google-drive:host=yonsei.ac.kr,user=js.jeong/0AMawZ-Z1xeoLUk9PVA/QA/`),
 verify the sha256 of the new copy, hash-check then `rm` the previous bundle I uploaded (never other Drive files), then message
-the "StarNote Interop Windows QA" session with name, size, SHA-256 and what to test. Latest: qa-10.
+the "StarNote Interop Windows QA" session with name, size, SHA-256 and what to test. Latest: qa-11.
