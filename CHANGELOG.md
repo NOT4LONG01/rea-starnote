@@ -15,6 +15,7 @@ Versions follow [SemVer](https://semver.org) and stay 0.x until 1.0. Newest firs
 - One Fit button: first tap fits the page height, then the width, alternating; it starts at height on each note or page.
 ### Fixed
 - Desktop: closing the window waits for the save, so ink drawn seconds before closing is no longer lost.
+- The desktop window can be made as narrow as 400 px (was 800), e.g. snapped to half a small screen; the Math panel then becomes a bottom sheet.
 - Version in `tauri.conf.json` is 0.2.0; the clear-page toast says undo works until the next autosave.
 
 ## 0.2.0
