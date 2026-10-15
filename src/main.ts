@@ -1,7 +1,7 @@
 import { PEN_KINDS, PenType, penById, penFor } from "./model/pens";
 import { SHAPE_KINDS, ShapeKind } from "./model/shapes";
 import { isMathText, latexOf, wrapLatex, renderMath } from "./model/math";
-import { PAPERS, TEMPLATES, SPACINGS, DEFAULT_FORMAT, DEFAULT_SPACING, NOTEBOOK_PAGE, NoteKind, PageFormat, PageTemplate, newCanvasTile, newPageTile, relayout, pageFormat, paperOf } from "./model/pages";
+import { PAPERS, TEMPLATES, SPACINGS, DEFAULT_FORMAT, DEFAULT_SPACING, NoteKind, PageFormat, PageTemplate, newCanvasTile, newPageTile, relayout, pageFormat, paperOf } from "./model/pages";
 import { CanvasRenderer, ViewSnapshot } from "./render/canvas-renderer";
 import { loadStarNoteArchive, StarNoteDocument, ParsedTextBox } from "./model/note-loader";
 import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serializer";
@@ -418,8 +418,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       doc.infinite = { template: format.template, spacing: format.spacing ?? DEFAULT_SPACING };
       doc.tiles.set("Page[0-0]", newCanvasTile("Page[0-0]", doc.infinite.template, doc.infinite.spacing));
     } else {
-      if (kind === "notebook") doc.continuous = true; // pages join into one endless sheet
-      doc.tiles.set("Page[0-0]", newPageTile("Page[0-0]", kind === "notebook" ? { ...format, w: NOTEBOOK_PAGE, h: NOTEBOOK_PAGE } : format));
+      doc.tiles.set("Page[0-0]", newPageTile("Page[0-0]", format));
       relayout(doc);
     }
     const item: LibraryItem = { id: crypto.randomUUID(), title: "Untitled note", kind: "note", created: now, modified: now, trashed: false };
@@ -453,7 +452,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (s.view) renderer.restore(s.view);
     else {
       renderer.setDocument(s.doc);
-      renderer.trimNotebookTail();
       renderer.fit("width");
     }
     resetFit();
@@ -465,7 +463,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function leaveToLibrary() {
     if (active) {
       const s = active;
-      renderer.trimNotebookTail();
       park();
       if (s.isNew && !isDirty(s)) { // a note nobody wrote on is not kept: no card, and no stale tab
         sessions.splice(sessions.indexOf(s), 1);
@@ -884,10 +881,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     try { const f = JSON.parse(pref.get("sn.format", "")); if (f && f.w && f.h && TEMPLATES.some((t) => t.id === f.template)) return f; } catch { /* default */ }
     return DEFAULT_FORMAT;
   };
-  const lastKind = (): NoteKind => { const k = pref.get("sn.kind", "pages"); return k === "notebook" || k === "infinite" ? k : "pages"; };
+  const lastKind = (): NoteKind => { const k = pref.get("sn.kind", "pages"); return k === "infinite" ? k : "pages"; };
   const KINDS: { id: NoteKind; label: string; note: string }[] = [
     { id: "pages", label: "Pages", note: "Finite pages (A4, A5, ...), one under the other." },
-    { id: "notebook", label: "Notebook", note: "One endless sheet for a long session: pages join without a seam and a new one appears as you scroll." },
     { id: "infinite", label: "Infinite", note: "No page edges: write anywhere and pan as far as you like." },
   ];
   /** Shows the type / paper / orientation / style / spacing chooser. Resolves with the chosen format, or null when cancelled. */
@@ -917,8 +913,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         $("pm-size-rows").classList.toggle("hidden", !paged);
         $("pm-spacing-row").classList.toggle("hidden", st.template === "blank");
         $("pm-kind-note").textContent = KINDS.find((k) => k.id === st.kind)?.note ?? "";
-        pv.style.aspectRatio = st.kind === "notebook" ? "2100 / 3400" : paged ? `${f.w} / ${f.h}` : "1 / 1";
-        pv.style.width = st.kind === "notebook" ? "110px" : `${f.w >= f.h || !paged ? 150 : Math.round(150 * f.w / f.h)}px`;
+        pv.style.aspectRatio = paged ? `${f.w} / ${f.h}` : "1 / 1";
+        pv.style.width = `${f.w >= f.h || !paged ? 150 : Math.round(150 * f.w / f.h)}px`;
         const cell = Math.max(8, Math.round((f.spacing ?? DEFAULT_SPACING) / 3.5)); // preview scale: 150px for a 2100-unit tile is 1/14, doubled so the lines stay visible
         pv.style.backgroundImage = f.template === "ruled" ? `repeating-linear-gradient(#fff 0 ${cell - 1}px, ${line} ${cell - 1}px ${cell}px)`
           : f.template === "grid" ? `linear-gradient(${line} 1px, transparent 1px), linear-gradient(90deg, ${line} 1px, transparent 1px)`
@@ -974,7 +970,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       root.appendChild(popItem("Page format…", "sliders", async () => {
         closePopover();
         const cur = renderer.pageFormatAt(i)!;
-        const r = await askPageFormat({ title: "Page format", ok: "Apply", initial: cur, scope: true, sizeLocked: renderer.hasBackgroundAt(i) || renderer.isContinuous() });
+        const r = await askPageFormat({ title: "Page format", ok: "Apply", initial: cur, scope: true, sizeLocked: renderer.hasBackgroundAt(i) });
         if (!r) return;
         const idx = r.all ? [...Array(total).keys()] : [i];
         renderer.setPageFormat(idx, { w: r.format.w, h: r.format.h, template: r.format.template, spacing: r.format.spacing });

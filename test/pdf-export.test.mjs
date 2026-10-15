@@ -172,22 +172,4 @@ await test("file size stays modest for a stroke-heavy page (2,000 strokes)", asy
   assert.equal(gsCheck(f).status, 0);
 });
 
-await test("a notebook is cut into A4-shaped pages (not one square page per tile), ink over a cut is on both pages, the empty tail is dropped", async () => {
-  const tile = (i, strokes = []) => ({ pageTag: `Page[${i}-0]`, rect: { left: 0, top: 2100 * i, right: 2100, bottom: 2100 * (i + 1) }, pageRect: { left: 0, top: 2100 * i, right: 2100, bottom: 2100 * (i + 1) }, template: "ruled", spacing: 52.5, strokes, textBoxes: [] });
-  const line = { shapeUuid: "n", parentUuid: "n", color: "#000000", width: 30, durationMs: 1, points: [...Array(21)].map((_, i) => ({ dt: i, x: 1000, y: 800 + i * 10, pressure: 32767 })) }; // world y 2900..3100 on the second tile
-  const nb = { uuid: "nb", title: "nb", layout: "stack", continuous: true, tiles: new Map([["Page[0-0]", tile(0)], ["Page[1-0]", tile(1, [line])], ["Page[2-0]", tile(2)], ["Page[3-0]", tile(3)]]) };
-  const f = join(tmp, "nb.pdf");
-  writeFileSync(f, await exportAnnotatedPdf(nb, "nb"));
-  const pages = Number(execFileSync("pdfinfo", [f], { encoding: "utf8" }).match(/Pages:\s+(\d+)/)[1]);
-  assert.equal(pages, 2, "two A4 slices cover the two pages that have ink; the empty tail adds none");
-  assert.deepEqual(pageSize(1, f), [595.28, 841.89]);
-  const k = 595.28 / 2100, cut = 2100 * 841.89 / 595.28; // the second slice starts here, in sheet units
-  const black = (px) => px[0] < 60 && px[1] < 60 && px[2] < 60;
-  const [low] = render(1, 72, f, "nb")([[Math.round(1000 * k), Math.round(2950 * k)]]);
-  const [high] = render(2, 72, f, "nb")([[Math.round(1000 * k), Math.round((3050 - cut) * k)]]);
-  assert.ok(black(low), `the line is on the first page just above the cut: ${low}`);
-  assert.ok(black(high), `and continues at the top of the second page: ${high}`);
-  assert.equal(gsCheck(f).status, 0);
-});
-
 console.log(`\n${passed} tests passed`);

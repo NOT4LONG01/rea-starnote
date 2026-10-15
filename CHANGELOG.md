@@ -4,11 +4,10 @@ Versions follow [SemVer](https://semver.org) and stay 0.x until 1.0. Newest firs
 
 ## Unreleased
 ### Added
-- Note types: **Notebook** (one endless seamless sheet that grows as you scroll) and **Infinite** canvas (tiles appear wherever you write), chosen in the New note dialog; `rea-starnote new --kind notebook|infinite`.
+- Note types: an **Infinite** canvas (tiles appear wherever you write), chosen in the New note dialog; `rea-starnote new --kind infinite`.
 - Line spacing choice (Narrow / Medium / Wide) and a Tablet 4:3 paper; lines are about 7 mm by default (Medium) instead of 12 mm. Older notes keep their spacing.
 ### Changed
-- A notebook exports to PDF as A4-shaped pages (it was one square page per tile); the empty tail is left out.
-- Text boxes and formulas have a bigger tap area; the Text popover stays open while editing; a notebook drops its empty trailing pages when you leave it; thumbnails show formulas as a block.
+- Text boxes and formulas have a bigger tap area; the Text popover stays open while editing; thumbnails show formulas as a block.
 - The default pen colour is the first swatch (black) instead of red.
 - Text is typed right on the page (caret and live text where you tap; tap elsewhere, switch tool or Esc commits); size/bold/italic in the Text popover.
 - Math has a docked side panel for the LaTeX source; the formula is typeset live on the page. Same `$$latex$$` storage and error refusal.

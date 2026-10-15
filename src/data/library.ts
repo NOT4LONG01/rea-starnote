@@ -130,7 +130,7 @@ export function renderThumbnail(doc: StarNoteDocument, w = 300, h = 400): string
   if (tile?.backgroundImage) {
     ctx.drawImage(tile.backgroundImage, rect.left, rect.top, rw, rh);
   } else {
-    drawPageTemplate(ctx, tile?.template ?? "ruled", rect, { line: "#e3e6ea", dot: "#c5cad1", lineWidth: 3, dotRadius: 5.2 }, tile ? spacingOf(tile) : undefined, !!doc.continuous);
+    drawPageTemplate(ctx, tile?.template ?? "ruled", rect, { line: "#e3e6ea", dot: "#c5cad1", lineWidth: 3, dotRadius: 5.2 }, tile ? spacingOf(tile) : undefined);
   }
 
   if (tile) {

@@ -1,4 +1,4 @@
-// The three kinds of note from the New note dialog: pages, a notebook that grows as you scroll, an infinite canvas you can write on anywhere.
+// The two kinds of note from the New note dialog: pages, and an infinite canvas you can write on anywhere.
 import { launch, ok, finish } from "./cdp.mjs";
 
 const b = await launch({ width: 1280, height: 800 });
@@ -20,34 +20,13 @@ const box = async () => ev(`JSON.stringify(document.getElementById('note-canvas'
 await ev(`document.querySelector('.card.create .card-thumb').click()`); await sleep(500);
 const kinds = await ev(`[...document.querySelectorAll('#pm-kind button')].map(e => e.textContent).join()`);
 const spacings = await ev(`[...document.querySelectorAll('#pm-spacing button')].map(e => e.textContent).join()`);
-ok(kinds === "Pages,Notebook,Infinite", `the New note dialog offers the three types (${kinds})`);
+ok(kinds === "Pages,Infinite", `the New note dialog offers the two types (${kinds})`);
 ok(spacings === "Narrow,Medium,Wide", `and a line spacing (${spacings})`);
 ok(await ev(`document.querySelector('#pm-spacing button.active')?.textContent`) === "Medium", "Medium (about 7 mm lines) is the default");
 await click("#pm-cancel");
 
-// ---- notebook: grows while you scroll
-let dlg = await create("notebook");
-ok(!dlg.size && /endless/.test(dlg.note), "Notebook hides paper/orientation and explains itself");
-const nb = await box();
-await click("#tool-pen");
-await drag([[nb.x + 300, nb.y + 200], [nb.x + 400, nb.y + 240], [nb.x + 500, nb.y + 200]]); // something on page 1, so the note is kept
-const before = await label();
-await wheel(nb.x + nb.width / 2, nb.y + nb.height / 2, 500, 14);
-const after = await label();
-const pages = (l) => Number(l.split("/")[1]);
-ok(pages(after) > pages(before), `scrolling down adds pages by itself (${before} -> ${after})`);
-await wheel(nb.x + nb.width / 2, nb.y + nb.height / 2, 500, 14);
-ok(pages(await label()) > pages(after), `and keeps going (${await label()})`);
-ok(await ev(`document.getElementById('add-page-pill').classList.contains('hidden')`), "no 'Add page' button: it is one continuous sheet");
-const grown = pages(await label());
-await click("#btn-back"); await sleep(900);
-await ev(`[...document.querySelectorAll('.card:not(.create)')][0].querySelector('.card-thumb').click()`); await sleep(1500);
-const trimmed = pages(await label());
-ok(trimmed < grown && trimmed >= 2 && trimmed <= 3, `leaving and reopening drops the empty pages piled up at the end, keeping one spare (${grown} -> ${trimmed})`);
-await click("#btn-back"); await sleep(600);
-
 // ---- infinite: ink anywhere
-dlg = await create("infinite");
+const dlg = await create("infinite");
 ok(!dlg.size, "Infinite hides paper/orientation too");
 const inf = await box();
 const cx = inf.x + inf.width / 2, cy = inf.y + inf.height / 2;

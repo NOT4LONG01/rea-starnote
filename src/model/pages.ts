@@ -12,7 +12,7 @@ export const TEMPLATES: { id: PageTemplate; label: string }[] = [
 
 /**
  * Line / grid / dot spacing in page units (one unit = 1/7.07 mm). New notes use 52.5 (about 7.4 mm, 40 lines per 2100-unit
- * tile); all offered spacings divide 2100, so ruling lines up across tile seams (notebook, infinite canvas). Notes made
+ * tile); all offered spacings divide 2100, so ruling lines up across tile seams (infinite canvas). Notes made
  * before spacing was recorded keep StarNote's own, much wider 86.81 (about 12 mm).
  */
 export const DEFAULT_SPACING = 52.5;
@@ -48,10 +48,8 @@ export const pageFormat = (paper: string, landscape: boolean, template: PageTemp
 
 export const DEFAULT_FORMAT: PageFormat = pageFormat("a4", false, "ruled");
 
-/** The three kinds of note: finite pages; a notebook (pages joined into one endless sheet, growing as you write); an infinite canvas. */
-export type NoteKind = "pages" | "notebook" | "infinite";
-/** A notebook page is a full 2100-unit tile, so pages meet without a gap or a seam. */
-export const NOTEBOOK_PAGE = 2100;
+/** The two kinds of note: finite pages, or an infinite canvas. (A "notebook" is a folder of notes in the library.) */
+export type NoteKind = "pages" | "infinite";
 
 /** The preset a size belongs to (to fill the format dialog), or null for a custom size. */
 export function paperOf(w: number, h: number): { paper: string; landscape: boolean } | null {
@@ -135,14 +133,13 @@ export function relayout(doc: StarNoteDocument) {
     const px = (maxW - w) / 2;
     t.rect = { left: px - ox, top: y - oy, right: px - ox + 2100, bottom: y - oy + 2100 };
     t.pageRect = { left: px, top: y, right: px + w, bottom: y + h };
-    y += h + (doc.continuous ? 0 : PAGE_GAP);
+    y += h + PAGE_GAP;
   }
 }
 
 /** What the sidecar file records: one entry per page, in order. */
 export const sidecarOf = (doc: StarNoteDocument) => ({
   version: 1,
-  ...(doc.continuous ? { continuous: true } : {}),
   ...(doc.infinite ? { layout: "canvas", template: doc.infinite.template, spacing: doc.infinite.spacing } : {}),
   pages: [...doc.tiles.values()].map((t) => ({ tag: t.pageTag, ...sizeOfPage(t), template: t.template ?? "ruled", ...(t.spacing ? { spacing: t.spacing } : {}) })),
 });

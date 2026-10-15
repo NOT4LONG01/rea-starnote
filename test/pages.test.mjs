@@ -153,23 +153,6 @@ await test("line spacing is recorded per page; new pages are 52.5 (about 7 mm), 
   assert.deepEqual([...old.tiles.values()].map(spacingOf), [LEGACY_SPACING, LEGACY_SPACING]);
 });
 
-await test("a notebook joins its pages without a gap, survives a save, and a stroke over the seam is split between the pages", async () => {
-  const doc = { uuid: crypto.randomUUID(), title: "nb", tiles: new Map(), layout: "stack", continuous: true };
-  for (let i = 0; i < 3; i++) { const tag = nextPageTag(doc); doc.tiles.set(tag, newPageTile(tag, { w: 2100, h: 2100, template: "ruled" })); }
-  relayout(doc);
-  const [a, b, c] = [...doc.tiles.values()];
-  assert.equal(b.pageRect.top, a.pageRect.bottom);
-  assert.equal(c.pageRect.top, b.pageRect.bottom);
-  const across = { ...stroke(500, 2050), points: [{ dt: 0, x: 500, y: 2050, pressure: 20000 }, { dt: 5, x: 560, y: 2150, pressure: 20000 }] }; // page 1 -> page 2
-  const re = await reload(await exportStarNoteArchive(doc, [across]));
-  assert.equal(re.continuous, true);
-  assert.equal(re.layout, "stack");
-  const [r1, r2] = [...re.tiles.values()];
-  assert.equal(r2.pageRect.top, r1.pageRect.bottom, "still joined after reload");
-  assert.equal(r1.strokes.length, 1);
-  assert.equal(r2.strokes.length, 1, "the part past the seam is on the next page");
-});
-
 await test("an infinite canvas keeps its free-form tiles and page style, and a stroke over a tile edge is stored on both tiles", async () => {
   assert.equal(cellTag(10, 10), "Page[0-0]");
   assert.equal(cellTag(-1, -1), "Page[-1--1]");
