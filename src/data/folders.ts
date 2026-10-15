@@ -43,7 +43,7 @@ export function canMoveTo(items: LibraryItem[], id: string, target: string | nul
 }
 
 /** Notes (not folders) below a folder that are not in the trash. */
-export const noteCount = (items: LibraryItem[], folderId: string) => descendantsOf(items, folderId).filter((i) => !isFolder(i) && !i.trashed).length;
+export const noteCount = (items: LibraryItem[], folderId: string, includeTrashed = false) => descendantsOf(items, folderId).filter((i) => !isFolder(i) && (includeTrashed || !i.trashed)).length;
 
 /**
  * What the Trash shows: trashed items whose folder is not itself trashed. A trashed folder is one card (its contents are

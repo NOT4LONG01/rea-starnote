@@ -4,8 +4,7 @@ import { launch, ok, finish } from "./cdp.mjs";
 const b = await launch({ width: 1280, height: 800 });
 const { ev, drag, sleep } = b;
 const click = async (sel) => { await ev(`document.querySelector('${sel}').click()`); await sleep(300); };
-await ev(`window.__names = []; window.prompt = () => window.__names.shift() ?? null; window.confirm = () => true;`);
-const name = (n) => ev(`window.__names.push(${JSON.stringify(n)})`);
+await ev(`window.confirm = () => true;`);
 const crumbs = () => ev(`[...document.querySelectorAll('#lib-title .crumb')].map(e => e.textContent).join(' > ')`);
 const cards = () => ev(`JSON.stringify([...document.querySelectorAll('#lib-grid .card:not(.create)')].map(c => ({ title: c.querySelector('.card-title span').textContent, folder: c.classList.contains('folder-card'), sub: c.querySelector('.card-date')?.textContent })))`).then(JSON.parse);
 const titles = async () => (await cards()).map((c) => c.title).join();
@@ -25,16 +24,32 @@ const dnd = async (fromTitle, toSel) => ev(`(() => {
 
 // ---- create and nest
 ok(await crumbs() === "All notes", "the library starts at 'All notes'");
-await name("Physics"); await click("#btn-new-folder");
+const newNotebook = async (n, via = ".card.create .card-thumb") => {
+  await click(via);
+  await click('#pm-kind button[data-v="notebook"]');
+  const shown = await ev(`JSON.stringify({ name: !document.getElementById('pm-name-row').classList.contains('hidden'), style: !document.getElementById('pm-style-rows').classList.contains('hidden'), size: !document.getElementById('pm-size-rows').classList.contains('hidden') })`).then(JSON.parse);
+  await ev(`document.getElementById('pm-name').value = ${JSON.stringify(n)}`);
+  await click("#pm-ok"); await sleep(300);
+  return shown;
+};
+const kinds = await ev(`(async () => { document.querySelector('.card.create .card-thumb').click(); await new Promise(r => setTimeout(r, 300)); const k = [...document.querySelectorAll('#pm-kind button')].map(e => e.textContent).join(); document.getElementById('pm-cancel').click(); return k; })()`);
+ok(kinds === "Pages,Infinite,Notebook", `one Create: the dialog offers Pages, Infinite and Notebook (${kinds})`);
+ok(await ev(`document.querySelectorAll('.card.create').length`) === 1, "a single Create card (no separate Notebook card)");
+const shown = await newNotebook("Physics", "#btn-new-folder");
+ok(shown.name && !shown.style && !shown.size, "choosing Notebook asks only for a name");
+ok(await crumbs() === "All notes > Physics", `creating a notebook opens it (${await crumbs()})`);
+await crumb("All notes");
 let c = await cards();
-ok(c.length === 1 && c[0].folder && c[0].title === "Physics" && c[0].sub === "0 notes", "New notebook creates a notebook card");
+ok(c.length === 1 && c[0].folder && c[0].title === "Physics" && c[0].sub === "0 notes", "it is a notebook card at the top level");
 await openCard("Physics");
-ok(await crumbs() === "All notes > Physics", `opening it shows the path (${await crumbs()})`);
-await name("Lab"); await click(".card.create.folder .card-thumb");
-ok(await titles() === "Lab", "a notebook can be created inside a notebook");
+await newNotebook("Lab");
+ok(await crumbs() === "All notes > Physics > Lab", "a notebook can be created inside a notebook");
+await crumb("Physics");
+ok(await titles() === "Lab", "and shows as a card inside its parent");
 
 // ---- a note made inside a notebook belongs to it
-await ev(`document.querySelector('.card.create:not(.folder) .card-thumb').click()`); await sleep(500);
+await click(".card.create .card-thumb");
+await click('#pm-kind button[data-v="pages"]');
 await click("#pm-ok"); await sleep(1500);
 const box = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse);
 await click("#tool-pen");
@@ -86,6 +101,7 @@ ok((await cards()).length === 0, "trashing a notebook removes it from the librar
 await click('.side-item[data-filter="trash"]');
 c = await cards();
 ok(c.length === 1 && c[0].title === "Physics" && c[0].folder, `the Trash shows it as one card, not everything inside (${JSON.stringify(c.map((x) => x.title))})`);
+ok(c[0].sub === "1 note", `and still counts what is inside it (${c[0].sub})`);
 await cardMenu("Physics", "Restore");
 await click('.side-item[data-filter="all"]');
 ok(await titles() === "Physics" && (await cards())[0].sub === "1 note", "restoring brings the notebook back with its note");

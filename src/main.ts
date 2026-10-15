@@ -210,26 +210,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (ui.filter === "all") {
       const create = el("div", "card create");
       const thumb = el("button", "card-thumb");
-      thumb.title = "Create a new note";
+      thumb.title = "Create a note or a notebook";
       thumb.innerHTML = '<i data-icon="plus"></i>';
       thumb.addEventListener("click", () => void createNote());
       const meta = el("div", "card-meta");
       meta.appendChild(el("div", "card-title", "Create"));
-      meta.appendChild(el("div", "card-date", "Start a blank note"));
+      meta.appendChild(el("div", "card-date", ui.folder ? "A note or notebook here" : "A note or a notebook"));
       create.append(thumb, meta);
       grid.appendChild(create);
-      if (!ui.query && ui.kind === "all") { // a notebook is created from here too
-        const nf = el("div", "card create folder");
-        const nt = el("button", "card-thumb");
-        nt.title = "Create a new notebook (a folder for notes)";
-        nt.innerHTML = '<i data-icon="folder"></i>';
-        nt.addEventListener("click", () => void newFolder());
-        const nm = el("div", "card-meta");
-        nm.appendChild(el("div", "card-title", "Notebook"));
-        nm.appendChild(el("div", "card-date", ui.folder ? "A folder inside this one" : "A folder for notes"));
-        nf.append(nt, nm);
-        grid.appendChild(nf);
-      }
     }
 
     const list = visibleItems();
@@ -337,12 +325,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ---------- notebooks (folders): create, open, move
   let dragId: string | null = null; // the card being dragged inside the library (a file dragged in from outside has no id)
-  async function newFolder() {
-    const name = prompt("New notebook", "Notebook")?.trim();
-    if (!name) return;
-    const now = Date.now();
-    await library.put({ id: crypto.randomUUID(), title: name, kind: "folder", created: now, modified: now, trashed: false, parentId: ui.folder ?? undefined });
+  async function newFolder(name: string) {
+    const now = Date.now(), id = crypto.randomUUID();
+    await library.put({ id, title: name, kind: "folder", created: now, modified: now, trashed: false, parentId: ui.folder ?? undefined });
     await refreshLibrary();
+    openFolder(id); // straight into it, ready for its first note
     scheduleSync();
   }
   function openFolder(id: string | null) {
@@ -427,7 +414,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const c = el("div", "card folder-card");
     const thumb = el("button", "card-thumb");
     thumb.innerHTML = '<i data-icon="folder"></i>';
-    const n = noteCount(items, item.id);
+    const n = noteCount(items, item.id, item.trashed); // in the Trash its contents are trashed too, but still count
     thumb.appendChild(el("span", "folder-count", String(n)));
     if (item.syncId) {
       const pending = item.modified > (item.syncLocal ?? 0);
@@ -1042,12 +1029,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     return DEFAULT_FORMAT;
   };
   const lastKind = (): NoteKind => { const k = pref.get("sn.kind", "pages"); return k === "infinite" ? k : "pages"; };
-  const KINDS: { id: NoteKind; label: string; note: string }[] = [
+  type NewKind = NoteKind | "notebook"; // a notebook is not a note: choosing it makes a folder
+  const KINDS: { id: NewKind; label: string; note: string }[] = [
     { id: "pages", label: "Pages", note: "Finite pages (A4, A5, ...), one under the other." },
     { id: "infinite", label: "Infinite", note: "No page edges: write anywhere and pan as far as you like." },
+    { id: "notebook", label: "Notebook", note: "A folder that holds notes and other notebooks." },
   ];
   /** Shows the type / paper / orientation / style / spacing chooser. Resolves with the chosen format, or null when cancelled. */
-  function askPageFormat(o: { title: string; ok: string; initial: PageFormat; scope?: boolean; sizeLocked?: boolean; kind?: NoteKind }): Promise<{ format: PageFormat; all: boolean; kind: NoteKind } | null> {
+  function askPageFormat(o: { title: string; ok: string; initial: PageFormat; scope?: boolean; sizeLocked?: boolean; kind?: NewKind }): Promise<{ format: PageFormat; all: boolean; kind: NewKind; name: string } | null> {
     return new Promise((resolve) => {
       const start = paperOf(o.initial.w, o.initial.h);
       const spacingId = SPACINGS.find((x) => Math.abs(x.v - (o.initial.spacing ?? NaN)) < 0.01)?.id ?? (o.kind ? "medium" : "keep"); // a new note starts at Medium; an older page's own spacing stays unless one is picked
@@ -1070,7 +1059,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           $(id).querySelectorAll<HTMLButtonElement>("button").forEach((b) => { b.classList.toggle("active", b.dataset.v === st[key]); b.disabled = !!o.sizeLocked && key !== "template" && key !== "scope"; });
         }
         const f = fmt(), pv = $("pm-preview"), line = "#dfe4ea", paged = st.kind === "pages";
+        const book = st.kind === "notebook";
         $("pm-size-rows").classList.toggle("hidden", !paged);
+        $("pm-style-rows").classList.toggle("hidden", book);
+        $("pm-name-row").classList.toggle("hidden", !book);
+        document.querySelector(".pm-preview-wrap")?.classList.toggle("hidden", book);
         $("pm-spacing-row").classList.toggle("hidden", st.template === "blank");
         $("pm-kind-note").textContent = KINDS.find((k) => k.id === st.kind)?.note ?? "";
         pv.style.aspectRatio = paged ? `${f.w} / ${f.h}` : "1 / 1";
@@ -1088,25 +1081,31 @@ document.addEventListener("DOMContentLoaded", async () => {
         for (const it of items) {
           const b = el("button", "", it.label);
           b.dataset.v = it.id;
-          b.addEventListener("click", () => { st[key] = it.id; paint(); });
+          b.addEventListener("click", () => { st[key] = it.id; paint(); if (key === "kind" && it.id === "notebook") $("pm-name").focus(); });
           box.appendChild(b);
         }
       }
-      const done = (v: { format: PageFormat; all: boolean; kind: NoteKind } | null) => {
+      const done = (v: { format: PageFormat; all: boolean; kind: NewKind; name: string } | null) => {
         pmEl.classList.add("hidden");
         $("pm-ok").onclick = $("pm-cancel").onclick = $("pm-close").onclick = null;
         resolve(v);
       };
-      $("pm-ok").onclick = () => done({ format: fmt(), all: st.scope === "all", kind: st.kind as NoteKind });
+      const nameBox = $<HTMLInputElement>("pm-name");
+      nameBox.value = "";
+      nameBox.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("pm-ok").click(); } };
+      $("pm-ok").onclick = () => done({ format: fmt(), all: st.scope === "all", kind: st.kind as NewKind, name: nameBox.value.trim() });
       $("pm-cancel").onclick = $("pm-close").onclick = () => done(null);
       paint();
       pmEl.classList.remove("hidden");
+      if (st.kind === "notebook") setTimeout(() => $("pm-name").focus(), 50);
     });
   }
 
-  async function createNote() {
-    const r = await askPageFormat({ title: "New note", ok: "Create", initial: lastFormat(), kind: lastKind() });
+  /** The one Create: a note (pages or infinite) or a notebook (a folder), chosen by Type. `kind` preselects the type. */
+  async function createNote(kind: NewKind = lastKind()) {
+    const r = await askPageFormat({ title: "Create", ok: "Create", initial: lastFormat(), kind });
     if (!r) return;
+    if (r.kind === "notebook") { await newFolder(r.name || "Notebook"); return; }
     pref.set("sn.format", JSON.stringify(r.format));
     pref.set("sn.kind", r.kind);
     newNote(r.format, r.kind);
@@ -1460,7 +1459,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   );
   $<HTMLInputElement>("lib-search").addEventListener("input", (e) => { ui.query = (e.target as HTMLInputElement).value; renderLibrary(); });
 
-  $("btn-new-folder").addEventListener("click", () => void newFolder());
+  $("btn-new-folder").addEventListener("click", () => void createNote("notebook"));
   $("btn-sort").dataset.pop = "1";
   $("btn-sort").addEventListener("click", (e) => {
     openPopover(e.currentTarget as HTMLElement, (root) => {
@@ -2036,4 +2035,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   await refreshLibrary();
   if (!autoSyncOn()) setSyncStatus("Auto-sync off");
   runSync(false);
+  void refreshThumbnails();
+
+  /**
+   * Card pictures are drawn when a note is saved, so older cards keep an older look (raw $$latex$$, wide lines). Redraw them
+   * once per THUMB_VERSION, in the background. Only `thumb` changes: no new `modified`, so nothing is re-synced.
+   */
+  async function refreshThumbnails() {
+    const THUMB_VERSION = "2";
+    if (pref.get("sn.thumbs", "") === THUMB_VERSION) return;
+    for (const it of items.filter((i) => i.kind === "note")) {
+      try {
+        const bytes = await library.getBytes(it.id);
+        if (bytes) await library.update(it.id, { thumb: renderThumbnail(await loadStarNoteArchive(toBuffer(bytes))) });
+      } catch { /* a note that does not load keeps its old picture */ }
+    }
+    pref.set("sn.thumbs", THUMB_VERSION);
+    await refreshLibrary();
+  }
 });
