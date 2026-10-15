@@ -12,7 +12,7 @@ const URL_APP = "http://localhost:1420/";
 
 async function up() { try { return (await fetch(URL_APP)).ok; } catch { return false; } }
 
-export async function launch({ width = 1280, height = 800, dpr = 1 } = {}) {
+export async function launch({ width = 1280, height = 800, dpr = 1, query = "" } = {}) {
   const children = [];
   if (!(await up())) {
     const vite = spawn("npx", ["vite", "--port", "1420", "--strictPort"], { cwd: root, stdio: "ignore" });
@@ -36,10 +36,10 @@ export async function launch({ width = 1280, height = 800, dpr = 1 } = {}) {
   const ev = async (expr) => { const r = (await send("Runtime.evaluate", { expression: expr, awaitPromise: true, returnByValue: true })).result; if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
   await send("Page.enable");
   await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: dpr, mobile: false });
-  await send("Page.navigate", { url: URL_APP });
+  await send("Page.navigate", { url: URL_APP + query });
   await sleep(2500);
-  const mouse = (type, x, y, buttons = 0) => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: 1, pointerType: "mouse" });
-  const drag = async (pts) => { await mouse("mousePressed", ...pts[0], 1); for (const p of pts.slice(1)) await mouse("mouseMoved", ...p, 1); await mouse("mouseReleased", ...pts.at(-1), 0); await sleep(250); };
+  const mouse = (type, x, y, buttons = 0, pointerType = "mouse") => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: 1, pointerType });
+  const drag = async (pts, pointerType = "mouse") => { await mouse("mousePressed", ...pts[0], 1, pointerType); for (const p of pts.slice(1)) await mouse("mouseMoved", ...p, 1, pointerType); await mouse("mouseReleased", ...pts.at(-1), 0, pointerType); await sleep(250); };
   const close = () => { ws.close(); for (const c of children) c.kill(); try { rmSync(profile, { recursive: true, force: true }); } catch {} };
   const newNote = async () => { await ev(`document.querySelector('.card.create .card-thumb').click();document.getElementById('pm-ok').click()`); await sleep(1200); };
   return { send, ev, mouse, drag, close, newNote, sleep };
