@@ -15,7 +15,8 @@ the top lists them.
 - **Pen vs finger:** the stylus draws; fingers pan and pinch to zoom (the hand tool lets a finger drag the page).
 - **Lasso** selects strokes to move, recolor, copy and paste. **Text** boxes take plain text and LaTeX math (`$$...$$`).
 - **Pages:** the pages menu adds, deletes, moves pages and changes their format; the add-page button at the end adds one.
-- **Undo/redo** covers everything, including edits to strokes saved earlier.
+- **Undo/redo** works until the note is saved (autosave runs a few seconds after you stop); after that, earlier edits can't be undone.
+- **Fit** button: first tap fits the page height, the next the page width, and so on.
 - Notes **autosave** a few seconds after you stop. Saving is non-destructive: parts of a `.note` the app does not understand
   stay untouched.
 

@@ -447,6 +447,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderer.setDocument(s.doc);
       renderer.fit("width");
     }
+    resetFit();
     s.view = null;
     renderEditorChrome();
     renderTabs();
@@ -583,7 +584,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderer.onRender = () => {
     const { index, total } = renderer.pageInfo();
     const label = `${index + 1} / ${total}`;
-    if (label !== lastPageLabel) { lastPageLabel = label; $("page-label").textContent = label; }
+    if (label !== lastPageLabel) { lastPageLabel = label; $("page-label").textContent = label; resetFit(); }
     $("add-page-pill").classList.toggle("hidden", !(renderer.isStack() && renderer.endOfNoteVisible() && inEditor()));
   };
 
@@ -593,9 +594,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("save-state").addEventListener("click", async () => { if (active) { await saveSession(active); showToast("Saved", "success"); } });
   $("tool-undo").addEventListener("click", () => renderer.undo());
   $("tool-redo").addEventListener("click", () => renderer.redo());
-  $("btn-zoom-reset").addEventListener("click", () => renderer.fit("page"));
-  $("btn-fit-width").addEventListener("click", () => renderer.fit("width"));
-  $("btn-fit-height").addEventListener("click", () => renderer.fit("height"));
+  // one Fit button: it shows the next fit (height first, then width, alternating); a new note or page starts at height again
+  let fitNext: "height" | "width" = "height";
+  function resetFit(next: "height" | "width" = "height") {
+    fitNext = next;
+    const b = $("btn-fit");
+    b.title = next === "height" ? "Fit page height" : "Fit page width";
+    b.innerHTML = `<i data-icon="${next === "height" ? "fith" : "fitw"}"></i>`;
+    hydrateIcons(b);
+  }
+  $("btn-fit").addEventListener("click", () => { renderer.fit(fitNext); resetFit(fitNext === "height" ? "width" : "height"); });
   $("page-prev").addEventListener("click", () => renderer.gotoPage(-1));
   $("page-next").addEventListener("click", () => renderer.gotoPage(1));
 
@@ -811,7 +819,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function clearCurrentPage() {
     const cleared = renderer.clearPage() > 0;
-    showToast(cleared ? "Page cleared. Undo brings it back." : "This page has no drawings.", cleared ? "success" : "info");
+    showToast(cleared ? "Page cleared. Undo brings it back until the note autosaves." : "This page has no drawings.", cleared ? "success" : "info");
   }
 
   function setTool(tool: Tool) {
@@ -1222,6 +1230,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (active) park();
     sessions.forEach((s) => { if (isDirty(s)) saveSession(s); });
   });
+  // the desktop app: closing the window waits for the save (the process would otherwise end before IndexedDB finished)
+  if (isDesktopApp()) {
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+      const win = getCurrentWindow();
+      void win.onCloseRequested(async (e) => {
+        e.preventDefault();
+        try {
+          park();
+          await Promise.race([Promise.all(sessions.filter(isDirty).map(saveSession)), new Promise((r) => setTimeout(r, 5000))]);
+        } finally { await win.destroy(); }
+      });
+    });
+  }
   window.addEventListener("beforeunload", (e) => {
     if (!isDesktopApp() && sessions.some(isDirty)) e.preventDefault(); // the apps just close: autosave and the hidden-flush above keep the work
   });

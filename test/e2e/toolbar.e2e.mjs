@@ -69,5 +69,16 @@ await openFor("tool-pen"); p = await pop();
 const rail = await ev(`JSON.stringify(document.getElementById('tool-pen').getBoundingClientRect())`).then(JSON.parse);
 ok(!p.hidden && p.box[0] >= rail.right && p.box[3] <= 411, "wide phone: the popover opens to the right of the tool rail and fits the screen");
 
+// one Fit button: height first, then width, alternating; it shows the next fit
+const fitInfo = () => ev(`JSON.stringify({ title: document.getElementById('btn-fit').title, zoom: document.getElementById('zoom-level').textContent, old: ['btn-zoom-reset','btn-fit-width','btn-fit-height'].filter(i => document.getElementById(i)).length })`).then(JSON.parse);
+let f = await fitInfo();
+ok(f.old === 0 && f.title === "Fit page height", "a single Fit button, offering page height first");
+await click("btn-fit"); const z1 = (await fitInfo()).zoom;
+f = await fitInfo();
+ok(f.title === "Fit page width", `after fitting the height the button offers the width (${z1})`);
+await click("btn-fit");
+f = await fitInfo();
+ok(f.title === "Fit page height" && f.zoom !== z1, `then the width (${f.zoom}), and it offers the height again`);
+
 b.close();
 finish();
