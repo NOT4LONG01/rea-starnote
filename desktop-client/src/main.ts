@@ -535,6 +535,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     hydrateIcons(wrap);
   }
 
+  $("doc-title").addEventListener("click", (e) => { // the tab bar is hidden on a wide phone: the title lists the open notes
+    openPopover(e.currentTarget as HTMLElement, (root) => {
+      root.append(el("div", "pop-title", "Open notes"));
+      for (const s of sessions) root.appendChild(popItem(s.item.title, "notes", () => { closePopover(); if (s !== active) activate(s); }, { checked: s === active }));
+      root.appendChild(el("div", "pop-sep"));
+      root.appendChild(popItem("New note", "plus", () => { closePopover(); newNote(lastFormat()); }));
+    });
+  });
+  $("canvas-container").addEventListener("pointerdown", () => { if (compact.matches && optionsOpen && !renderer.hasSelection()) { optionsOpen = false; renderToolOptions(); } }, true); // a flyout must not sit on the page while you draw
+
   renderer.onChange = () => {
     if (!active) return;
     renderEditorChrome();
@@ -598,6 +608,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ----- the options bar under the toolbar: only what the active tool offers
   const optBox = $("tool-options");
   let optionsOpen = true;
+  const compact = window.matchMedia("(orientation: landscape) and (max-height: 520px)"); // wide phone: options are a flyout over the page
   const group = (label?: string) => { const g = el("div", "opt-group"); if (label) g.appendChild(el("span", "opt-label", label)); optBox.appendChild(g); return g; };
   const chipButton = (parent: HTMLElement, label: string, active: boolean, run: () => void, extra = "") => {
     const b = el("button", `opt-chip${active ? " active" : ""} ${extra}`.trim(), label);

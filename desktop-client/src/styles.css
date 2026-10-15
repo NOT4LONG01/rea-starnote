@@ -449,3 +449,28 @@ body.eink-mode .sb-thumb { background: #000; }
 
 .tool-options .icon-btn { min-width: 36px; height: 36px; }
 .opt-range { width: 120px; accent-color: var(--accent); }
+
+/* ---------- wide phone (landscape, short screen: e.g. Galaxy Note 8): a left tool rail, a thin top strip, floating options ---------- */
+@media (orientation: landscape) and (max-height: 520px) {
+  #view-editor { display: grid; grid-template-columns: 48px minmax(0, 1fr); grid-template-rows: 36px minmax(0, 1fr); }
+  .tabbar { display: none; }
+  .topbar { grid-column: 1 / -1; grid-row: 1; height: 36px; padding: 0 6px; gap: 2px; }
+  .topbar .icon-btn { height: 32px; min-width: 32px; padding: 0 4px; }
+  .topbar-title { display: block; font-size: 14px; max-width: 34vw; cursor: pointer; }
+  .zoom-level { min-width: 40px; }
+  .toolrow { grid-column: 1; grid-row: 2; flex-direction: column; width: 48px; height: auto; padding: 6px 2px; gap: 2px; overflow-x: hidden; overflow-y: auto; border-bottom: 0; border-right: 1px solid #1f1f1f; }
+  .toolrow .icon-btn { width: 42px; height: 42px; flex: none; }
+  .toolrow .vsep { width: 28px; height: 1px; margin: 3px 0; }
+  .tool-options {
+    position: absolute; left: 54px; top: 42px; z-index: 30;
+    flex-direction: column; align-items: flex-start; gap: 8px; height: auto;
+    width: max-content; max-width: calc(100% - 66px); max-height: calc(100% - 50px); overflow: auto;
+    padding: 8px 10px; border: 1px solid #4a4a4a; border-radius: 12px; background: var(--bg-bar); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+  .tool-options.hidden { display: none !important; }
+  .opt-group { flex-wrap: wrap; }
+  .canvas-container { grid-column: 2; grid-row: 2; }
+  .pagenav { top: 8px; right: 14px; }
+  .pagenav button { height: 34px; }
+  .add-page-pill { bottom: 10px; padding: 8px 14px; }
+}
