@@ -65,4 +65,19 @@ test("an item in a missing or trashed folder is shown at the top level", () => {
   assert.equal(f.liveParent(items.map((i) => (i.id === "B" ? { ...i, trashed: true } : i)), items.find((i) => i.id === "n2")), null);
 });
 
+test("page order: unset means creation time, a move takes the midpoint of its new neighbours, nothing else changes", () => {
+  const pages = [item("p1", "note", "S", { created: 100 }), item("p2", "note", "S", { created: 200 }), item("p3", "note", "S", { created: 300, order: 150 })];
+  assert.deepEqual([...pages].sort(f.byPlace).map((p) => p.id), ["p1", "p3", "p2"], "p3's manual order puts it between");
+  const rest = pages.filter((p) => p.id !== "p2").sort(f.byPlace); // move p2 to the top
+  assert.equal(f.orderAt(rest, 0), 100 - 1000);
+  assert.equal(f.orderAt(rest, 1), 125, "between p1 (100) and p3 (150)");
+  assert.equal(f.orderAt(rest, 2), 1150, "after the last");
+  assert.ok(f.orderAt([], 0) > 0);
+});
+test("the notebook at the top of a path and the depth below it", () => {
+  assert.deepEqual([f.rootNotebookOf(items, "C").root.id, f.rootNotebookOf(items, "C").depth], ["A", 2]);
+  assert.deepEqual([f.rootNotebookOf(items, "A").root.id, f.rootNotebookOf(items, "A").depth], ["A", 0]);
+  assert.equal(f.rootNotebookOf(items, null).root, null);
+});
+
 console.log(`${passed} tests passed`);

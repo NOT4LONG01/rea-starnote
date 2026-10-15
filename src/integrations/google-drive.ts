@@ -600,6 +600,8 @@ export class GoogleDriveService {
       kind: f.appProperties?.kind === "pdf" ? "pdf" : "note",
       mime: f.mimeType,
       parentId: f.parents?.[0],
+      order: f.appProperties?.order !== undefined && f.appProperties.order !== "" ? Number(f.appProperties.order) : undefined,
+      color: f.appProperties?.color || undefined,
     };
   }
 
@@ -641,8 +643,8 @@ export class GoogleDriveService {
         return out;
       },
 
-      upload: async ({ name, data, fileId, noteId, kind, parentId, fromParentId }) => {
-        const metadata: Record<string, unknown> = { name, mimeType: "application/octet-stream", appProperties: { starnoteId: noteId, kind } };
+      upload: async ({ name, data, fileId, noteId, kind, parentId, fromParentId, order }) => {
+        const metadata: Record<string, unknown> = { name, mimeType: "application/octet-stream", appProperties: { starnoteId: noteId, kind, ...(order === undefined ? {} : { order: String(order) }) } }; // appProperties values are strings
         if (!fileId) metadata.parents = [parentId];
         const boundary = "-------StarNoteSync" + Math.random().toString(36).slice(2);
         const enc = new TextEncoder();
@@ -663,20 +665,20 @@ export class GoogleDriveService {
         return this.toRemoteFile(await resp.json());
       },
 
-      createFolder: async ({ name, noteId, parentId }) => {
+      createFolder: async ({ name, noteId, parentId, color }) => {
         const resp = await this.driveFetch(`https://www.googleapis.com/drive/v3/files?fields=${FIELDS}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, mimeType: FOLDER, parents: [parentId], appProperties: { starnoteId: noteId, kind: "folder" } }),
+          body: JSON.stringify({ name, mimeType: FOLDER, parents: [parentId], appProperties: { starnoteId: noteId, kind: "folder", ...(color ? { color } : {}) } }),
         });
         return this.toRemoteFile(await resp.json());
       },
 
-      update: async (fileId, { name, parentId, fromParentId }) => {
+      update: async (fileId, { name, parentId, fromParentId, color }) => {
         const resp = await this.driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=${FIELDS}${moveParams(parentId, fromParentId)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(name === undefined ? {} : { name }),
+          body: JSON.stringify({ ...(name === undefined ? {} : { name }), ...(color === undefined ? {} : { appProperties: { color } }) }),
         });
         return this.toRemoteFile(await resp.json());
       },

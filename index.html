@@ -31,6 +31,7 @@
 
           <nav class="side-nav">
             <button class="side-item active" data-filter="all"><i data-icon="notes"></i><span>All notes</span><em id="count-all">0</em></button>
+            <button class="side-item" data-filter="quick" title="Notes that are not in a notebook"><i data-icon="quick"></i><span>Quick Notes</span><em id="count-quick">0</em></button>
             <button class="side-item" data-filter="trash"><i data-icon="trash"></i><span>Trash</span><em id="count-trash">0</em></button>
             <button class="side-link" id="side-zotero"><i data-icon="book"></i><span>Zotero</span><em id="zotero-dot"></em></button>
           </nav>
@@ -53,6 +54,7 @@
             <button id="btn-sidebar-open" class="icon-btn only-collapsed" title="Show sidebar"><i data-icon="sidebar"></i></button>
             <h1 id="lib-title">All notes</h1>
             <div class="lib-tools">
+              <div id="lib-view" class="lib-view hidden" role="group" aria-label="View"><button data-v="grid" title="Cards">Grid</button><button data-v="sections" title="Section tabs and a page list, like OneNote">Sections</button></div>
               <button id="btn-new-folder" class="icon-btn" title="New notebook (a folder for notes)"><i data-icon="folder"></i></button>
               <button id="btn-sort" class="icon-btn" title="Sort"><i data-icon="sort"></i></button>
               <button id="btn-import" class="icon-btn" title="Import .note / .pdf"><i data-icon="upload"></i></button>
@@ -66,6 +68,7 @@
           </nav>
 
           <div id="lib-grid" class="lib-grid"></div>
+          <div id="lib-sections" class="lib-sections hidden"></div>
           <p id="lib-drop-hint" class="lib-hint">Drop a <b>.note</b> or <b>.pdf</b> file anywhere to import it.</p>
         </main>
       </section>
@@ -91,6 +94,7 @@
         <header class="topbar">
           <button id="btn-back" class="icon-btn" title="Back to library"><i data-icon="back"></i></button>
           <span id="save-state" class="save-state" title="Saved to library"><i data-icon="check"></i></span>
+          <button id="btn-pages" class="icon-btn hidden" title="Pages in this section"><i data-icon="pages"></i></button>
           <div class="topbar-title" id="doc-title">Untitled</div>
           <span class="spacer"></span>
           <div class="seg">
@@ -123,6 +127,7 @@
 
         <main class="canvas-container" id="canvas-container">
           <canvas id="note-canvas"></canvas>
+          <aside id="page-rail" class="page-rail hidden" aria-label="Pages"></aside>
           <textarea id="text-ghost" class="text-ghost" aria-label="Text" tabindex="-1" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
           <div id="text-editor" class="text-editor hidden" role="dialog" aria-label="Math (LaTeX)">
             <div class="te-head"><b>Math</b><span class="te-sub">LaTeX source; the formula is typeset on the page</span></div>

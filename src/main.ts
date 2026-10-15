@@ -8,7 +8,7 @@ import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serialize
 import { GoogleDriveService, GoogleDriveFile } from "./integrations/google-drive";
 import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
 import { library, renderThumbnail, LibraryItem } from "./data/library";
-import { isFolder, childrenOf, descendantsOf, pathOf, canMoveTo, noteCount, visibleTrash, liveParent } from "./data/folders";
+import { isFolder, childrenOf, descendantsOf, pathOf, canMoveTo, noteCount, visibleTrash, liveParent, byPlace, orderAt, rootNotebookOf } from "./data/folders";
 import { isDesktopApp } from "./integrations/net";
 import { syncLibrary } from "./data/sync";
 import { ZoteroClient, ZoteroItem, ZoteroPdf, ZoteroCollection } from "./integrations/zotero";
@@ -51,6 +51,8 @@ const ICONS: Record<string, string> = {
   highlighter: '<path d="M9 3l7 7-6 6-3-1-3 3H2l3-4-1-3z"/><path d="M14 12l6-6M5 21h15"/>',
   lasso: '<path d="M12 4c-5 0-9 2.4-9 5.5S7 15 12 15s9-2.4 9-5.5S17 4 12 4z" stroke-dasharray="3 2.4"/><path d="M9 15c-.8 2.6.6 5 3 5"/>',
   paste: '<rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V4a1 1 0 011-1h4a1 1 0 011 1v1M9 12h6M9 16h6"/>',
+  quick: '<path d="M13 3L4 14h7l-1 7 9-11h-7z"/>',
+  pages: '<rect x="3" y="4" width="6" height="16" rx="1.5"/><path d="M12 7h9M12 12h9M12 17h6"/>',
   folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
 };
@@ -146,7 +148,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const ui = {
     folder: null as string | null, // the notebook being shown (null = top level)
-    filter: "all" as "all" | "trash",
+    filter: "all" as "all" | "quick" | "trash", // quick = notes that are in no notebook
     kind: "all" as "all" | "note" | "pdf",
     query: "",
     sort: pref.get("sn.sort", "modified") as "modified" | "created" | "title",
@@ -182,12 +184,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function refreshLibrary() {
     items = await library.list();
     renderLibrary();
+    if (active && inEditor()) renderRail();
   }
 
   function visibleItems(): LibraryItem[] {
     const q = ui.query.trim().toLowerCase();
     const live = items.filter((i) => !i.trashed);
-    const here = ui.filter === "trash" ? visibleTrash(items) : q ? live.filter((i) => i.title.toLowerCase().includes(q)) : live.filter((i) => liveParent(items, i) === ui.folder); // an item whose notebook is gone or trashed shows at the top level; a search looks in every notebook
+    const here = ui.filter === "trash" ? visibleTrash(items) : ui.filter === "quick" ? live.filter((i) => !isFolder(i) && !liveParent(items, i) && (!q || i.title.toLowerCase().includes(q))) : q ? live.filter((i) => i.title.toLowerCase().includes(q)) : live.filter((i) => liveParent(items, i) === ui.folder); // an item whose notebook is gone or trashed shows at the top level; a search looks in every notebook
     return here
       .filter((i) => ui.kind === "all" || (!isFolder(i) && i.kind === ui.kind))
       .sort((a, b) => Number(isFolder(b)) - Number(isFolder(a)) || (ui.sort === "title" ? a.title.localeCompare(b.title) : b[ui.sort] - a[ui.sort])); // notebooks first
@@ -197,7 +200,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (ui.folder && !items.some((i) => i.id === ui.folder && isFolder(i) && !i.trashed)) ui.folder = null; // the notebook is gone (deleted or synced away)
     $("count-all").textContent = String(items.filter((i) => !i.trashed && !isFolder(i)).length);
     $("count-trash").textContent = String(visibleTrash(items).length);
+    $("count-quick").textContent = String(items.filter((i) => !i.trashed && !isFolder(i) && !liveParent(items, i)).length);
     renderCrumbs();
+    const ctx = sectionsCtx();
+    const view = $("lib-view");
+    view.classList.toggle("hidden", !ctx);
+    const sections = !!ctx && viewOf(ctx.nb.id) === "sections";
+    view.querySelectorAll<HTMLElement>("button").forEach((b) => b.classList.toggle("active", b.dataset.v === (sections ? "sections" : "grid")));
+    $("lib-grid").classList.toggle("hidden", sections);
+    $("lib-tabs").classList.toggle("hidden", sections);
+    $("lib-sections").classList.toggle("hidden", !sections);
+    if (sections) { renderSections(ctx!.nb); return; }
     $("lib-drop-hint").innerHTML = ui.filter === "trash"
       ? "Trashed notes are also moved to Google Drive's trash when sync is on (Drive keeps them 30 days)."
       : "Drop a <b>.note</b> or <b>.pdf</b> file anywhere to import it.";
@@ -207,7 +220,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const grid = $("lib-grid");
     grid.innerHTML = "";
 
-    if (ui.filter === "all") {
+    if (ui.filter !== "trash") {
       const create = el("div", "card create");
       const thumb = el("button", "card-thumb");
       thumb.title = "Create a note or a notebook";
@@ -325,9 +338,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ---------- notebooks (folders): create, open, move
   let dragId: string | null = null; // the card being dragged inside the library (a file dragged in from outside has no id)
-  async function newFolder(name: string) {
+  async function newFolder(name: string, parent: string | null = ui.folder) {
     const now = Date.now(), id = crypto.randomUUID();
-    await library.put({ id, title: name, kind: "folder", created: now, modified: now, trashed: false, parentId: ui.folder ?? undefined });
+    await library.put({ id, title: name, kind: "folder", created: now, modified: now, trashed: false, parentId: parent ?? undefined });
     await refreshLibrary();
     openFolder(id); // straight into it, ready for its first note
     scheduleSync();
@@ -401,6 +414,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const h = $("lib-title");
     h.innerHTML = "";
     if (ui.filter === "trash") { h.textContent = "Trash"; return; }
+    if (ui.filter === "quick") { h.textContent = "Quick Notes"; return; }
     const path = pathOf(items, ui.folder);
     const crumb = (label: string, id: string | null, current: boolean) => {
       const b = el(current ? "span" : "button", "crumb", label);
@@ -414,6 +428,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const c = el("div", "card folder-card");
     const thumb = el("button", "card-thumb");
     thumb.innerHTML = '<i data-icon="folder"></i>';
+    if (item.color) { thumb.style.color = item.color; thumb.style.background = `color-mix(in srgb, ${item.color} 22%, #2b2f36)`; }
     const n = noteCount(items, item.id, item.trashed); // in the Trash its contents are trashed too, but still count
     thumb.appendChild(el("span", "folder-count", String(n)));
     if (item.syncId) {
@@ -437,6 +452,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         else root.append(
           popItem("Open", "folder", () => openFolder(item.id)),
           popItem("Rename", "pen", () => renameItem(item)),
+          popItem("Colour…", "sliders", () => pickColor(item, menu)),
           popItem("Move to…", "folder", () => void moveItemTo(item)),
           popItem("Move to trash", "trash", () => setTrashed(item, true), { danger: true })
         );
@@ -447,6 +463,208 @@ document.addEventListener("DOMContentLoaded", async () => {
     meta.append(title, el("div", "card-date", `${n} note${n === 1 ? "" : "s"}`));
     c.append(thumb, meta);
     return c;
+  }
+
+  // ---------- OneNote-style view: a notebook's sub-notebooks are its sections (tabs), the notes in a section its pages
+  const NB_COLORS = ["#d9534f", "#e8833a", "#d4a514", "#4caf50", "#2aa1b3", "#3f7fd9", "#8a63d2", "#c45ca2"];
+  const DEFAULT_TAB = "#5b8db8";
+  /** The notebook whose sections are shown: when a top-level notebook or one of its sections is open (deeper levels use the grid). */
+  function sectionsCtx(): { nb: LibraryItem } | null {
+    if (ui.filter !== "all" || ui.query || !ui.folder) return null;
+    const { root, depth } = rootNotebookOf(items, ui.folder);
+    return root && depth <= 1 ? { nb: root } : null;
+  }
+  const viewOf = (nbId: string) => pref.get(`sn.view.${nbId}`, "grid");
+  $("lib-view").querySelectorAll<HTMLElement>("button").forEach((b) => b.addEventListener("click", () => {
+    const ctx = sectionsCtx();
+    if (ctx) { pref.set(`sn.view.${ctx.nb.id}`, b.dataset.v!); renderLibrary(); }
+  }));
+  const liveIn = (parent: string) => items.filter((i) => !i.trashed && i.parentId === parent);
+
+  function pickColor(item: LibraryItem, anchor: HTMLElement) {
+    openPopover(anchor, (root) => {
+      root.append(el("div", "pop-title", `Colour of "${item.title}"`));
+      const g = el("div", "color-swatches");
+      for (const c of NB_COLORS) {
+        const b = el("button", c === item.color ? "active" : "");
+        b.style.setProperty("--c", c);
+        b.title = c;
+        b.addEventListener("click", () => { closePopover(); void setColor(item, c); });
+        g.appendChild(b);
+      }
+      root.append(g, popItem("No colour", "close", () => void setColor(item, undefined)));
+    });
+  }
+  async function setColor(item: LibraryItem, color: string | undefined) {
+    await library.update(item.id, { color, modified: Date.now() });
+    await refreshLibrary();
+    scheduleSync();
+  }
+
+  /** Puts a page at `index` of its list (the list it is in, sorted by place). Only that page changes. */
+  async function placePage(item: LibraryItem, list: LibraryItem[], index: number) {
+    const rest = list.filter((x) => x.id !== item.id).sort(byPlace);
+    const at = Math.max(0, Math.min(rest.length, index));
+    await library.update(item.id, { order: orderAt(rest, at), modified: Date.now() });
+    const s = sessions.find((x) => x.item.id === item.id);
+    if (s) s.item = { ...s.item, order: orderAt(rest, at) };
+    await refreshLibrary();
+    scheduleSync();
+  }
+  /** Drag a row up or down its list to reorder (mouse and pen). Rows also keep their move-to-notebook drag (onto a tab or the path). */
+  function reorderable(row: HTMLElement, item: LibraryItem, list: () => LibraryItem[]) {
+    row.draggable = true;
+    row.addEventListener("dragstart", (e) => { dragId = item.id; e.dataTransfer?.setData("text/x-starnote-item", item.id); if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"; });
+    row.addEventListener("dragend", () => { dragId = null; });
+    const side = (e: DragEvent) => (e.clientY - row.getBoundingClientRect().top < row.offsetHeight / 2 ? "before" : "after");
+    row.addEventListener("dragover", (e) => {
+      const moving = list().find((x) => x.id === dragId);
+      if (!moving || moving.id === item.id) return;
+      e.preventDefault(); e.stopPropagation();
+      row.classList.toggle("drop-before", side(e) === "before");
+      row.classList.toggle("drop-after", side(e) === "after");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drop-before", "drop-after"));
+    row.addEventListener("drop", (e) => {
+      row.classList.remove("drop-before", "drop-after");
+      const all = list().sort(byPlace), moving = all.find((x) => x.id === dragId);
+      if (!moving || moving.id === item.id) return;
+      e.preventDefault(); e.stopPropagation();
+      dragId = null;
+      const rest = all.filter((x) => x.id !== moving.id);
+      void placePage(moving, all, rest.indexOf(item) + (side(e) === "after" ? 1 : 0));
+    });
+  }
+  function noteMenu(item: LibraryItem, anchor: HTMLElement, list?: LibraryItem[]) {
+    openPopover(anchor, (root) => {
+      root.append(popItem("Open", "notes", () => openItem(item.id)), popItem("Rename", "pen", () => renameItem(item)));
+      if (list) { // a page list: touch has no drag, so up / down are here
+        const sorted = [...list].sort(byPlace), i = sorted.findIndex((x) => x.id === item.id);
+        if (i > 0) root.append(popItem("Move up", "undo", () => void placePage(item, sorted, i - 1)));
+        if (i < sorted.length - 1) root.append(popItem("Move down", "redo", () => void placePage(item, sorted, i + 1)));
+      }
+      root.append(
+        popItem("Move to…", "folder", () => void moveItemTo(item)),
+        popItem("Duplicate", "copy", () => duplicateItem(item)),
+        popItem("Download .note", "download", () => downloadItem(item)),
+        popItem("Move to trash", "trash", () => setTrashed(item, true), { danger: true })
+      );
+    });
+  }
+
+  function renderSections(nb: LibraryItem) {
+    const box = $("lib-sections");
+    box.innerHTML = "";
+    const sections = liveIn(nb.id).filter(isFolder).sort(byPlace);
+    const loose = () => liveIn(nb.id).filter((i) => !isFolder(i));
+    const hasOwn = loose().length > 0 || sections.length === 0; // the notebook's own pages get a tab of their own
+    if (ui.folder === nb.id && !hasOwn) ui.folder = sections[0].id; // a notebook opens on its first section
+    const current = ui.folder!;
+    const cur = items.find((i) => i.id === current)!;
+    renderCrumbs();
+
+    const tabs = el("div", "sec-tabs");
+    tabs.style.setProperty("--c", cur.color ?? DEFAULT_TAB);
+    const tab = (f: LibraryItem, label: string) => {
+      const b = el("button", `sec-tab${f.id === current ? " active" : ""}`);
+      b.style.setProperty("--c", f.color ?? DEFAULT_TAB);
+      b.appendChild(el("span", "", label));
+      b.addEventListener("click", () => openFolder(f.id));
+      dropTarget(b, f.id);
+      if (f.id === current && f.id !== nb.id) { // the open section's own menu
+        const m = el("span", "sec-menu");
+        m.dataset.pop = "1";
+        m.innerHTML = '<i data-icon="chevron"></i>';
+        m.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openPopover(m, (root) => root.append(
+            popItem("Rename", "pen", () => renameItem(f)),
+            popItem("Colour…", "sliders", () => pickColor(f, m)),
+            popItem("Move to…", "folder", () => void moveItemTo(f)),
+            popItem("Move to trash", "trash", () => setTrashed(f, true), { danger: true })
+          ));
+        });
+        b.appendChild(m);
+      }
+      return b;
+    };
+    if (hasOwn) tabs.appendChild(tab(nb, nb.title));
+    for (const s of sections) tabs.appendChild(tab(s, s.title));
+    const add = el("button", "sec-tab add", "+ Section");
+    add.title = "Add a section to this notebook";
+    add.addEventListener("click", () => void createNote("notebook", nb.id));
+    tabs.appendChild(add);
+    box.appendChild(tabs);
+
+    const list = el("div", "page-list");
+    const pages = () => liveIn(current).filter((i) => !isFolder(i));
+    for (const f of liveIn(current).filter(isFolder).sort(byPlace)) { // notebooks inside a section open as a grid
+      const r = el("div", "page-row folder");
+      r.innerHTML = '<div class="pr-thumb"><i data-icon="folder"></i></div>';
+      const t = el("div"); t.append(el("div", "pr-title", f.title), el("div", "pr-date", `${noteCount(items, f.id)} notes`));
+      r.appendChild(t);
+      r.addEventListener("click", () => openFolder(f.id));
+      dropTarget(r, f.id);
+      list.appendChild(r);
+    }
+    for (const p of pages().sort(byPlace)) {
+      const r = el("div", "page-row");
+      const th = el("div", "pr-thumb");
+      if (p.thumb) { const img = el("img"); img.src = p.thumb; img.alt = ""; img.draggable = false; th.appendChild(img); }
+      const t = el("div"); t.append(el("div", "pr-title", p.title), el("div", "pr-date", fmtDate(p.modified)));
+      const menu = el("button");
+      menu.dataset.pop = "1";
+      menu.title = "More";
+      menu.innerHTML = '<i data-icon="more"></i>';
+      menu.addEventListener("click", (e) => { e.stopPropagation(); noteMenu(p, menu, pages()); });
+      r.append(th, t, menu);
+      r.addEventListener("click", () => openItem(p.id));
+      reorderable(r, p, pages);
+      list.appendChild(r);
+    }
+    if (!list.children.length) list.appendChild(el("div", "empty-state", "No pages yet."));
+    const newPage = el("button", "btn page-add", "+ Page");
+    newPage.addEventListener("click", () => newNote(lastFormat(), lastKind())); // straight in, in the last format, like OneNote
+    box.append(list, newPage);
+    hydrateIcons(box);
+  }
+
+  // ---------- the page rail beside the editor: the other pages of the open note's notebook or section
+  const railOn = () => pref.get("sn.rail", "1") === "1";
+  $("btn-pages").addEventListener("click", () => { pref.set("sn.rail", railOn() ? "0" : "1"); renderRail(); });
+  function renderRail() {
+    const rail = $("page-rail"), btn = $("btn-pages");
+    const parent = active && active.item.parentId ? items.find((i) => i.id === active!.item.parentId && isFolder(i) && !i.trashed) : undefined;
+    btn.classList.toggle("hidden", !parent);
+    btn.classList.toggle("on", !!parent && railOn());
+    rail.classList.toggle("hidden", !parent || !railOn());
+    if (!parent || !railOn()) return;
+    const siblings = () => {
+      const l = items.filter((i) => !i.trashed && !isFolder(i) && i.parentId === parent.id);
+      for (const t of sessions) if (t.item.parentId === parent.id && !l.some((i) => i.id === t.item.id)) l.push(t.item); // pages open in tabs but not saved yet
+      return l;
+    };
+    rail.innerHTML = "";
+    rail.style.setProperty("--c", parent.color ?? DEFAULT_TAB);
+    const head = el("div", "rail-head");
+    head.append(el("span", "", parent.title));
+    const close = el("button", "icon-btn");
+    close.title = "Hide pages";
+    close.innerHTML = '<i data-icon="close"></i>';
+    close.addEventListener("click", () => { pref.set("sn.rail", "0"); renderRail(); });
+    head.appendChild(close);
+    const list = el("div", "rail-list");
+    for (const p of siblings().sort(byPlace)) {
+      const b = el("button", `rail-item${p.id === active!.item.id ? " current" : ""}`);
+      b.append(el("b", "", p.title), el("small", "", fmtDate(p.modified)));
+      b.addEventListener("click", () => { if (p.id !== active?.item.id) void openItem(p.id); });
+      if (items.some((i) => i.id === p.id)) reorderable(b, p, () => siblings().filter((x) => items.some((i) => i.id === x.id))); // an unsaved page can't be reordered yet
+      list.appendChild(b);
+    }
+    const add = el("button", "btn btn-sm rail-add", "+ Page");
+    add.addEventListener("click", () => { ui.folder = parent.id; newNote(lastFormat(), lastKind()); });
+    rail.append(head, list, add);
+    hydrateIcons(rail);
   }
 
   async function duplicateItem(item: LibraryItem) {
@@ -617,6 +835,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         renderTabs();
       } else await saveSession(s);
     }
+    await Promise.all(sessions.filter((t) => t !== active && isDirty(t)).map((t) => saveSession(t))); // pages written in other tabs show up in the library too
     showView("library");
     await refreshLibrary();
   }
@@ -687,6 +906,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     setSaveState(isDirty(active) ? "dirty" : "saved");
     $<HTMLButtonElement>("tool-undo").disabled = !renderer.canUndo();
     $<HTMLButtonElement>("tool-redo").disabled = !renderer.canRedo();
+    renderRail();
   }
 
   function renderTabs() {
@@ -1102,10 +1322,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /** The one Create: a note (pages or infinite) or a notebook (a folder), chosen by Type. `kind` preselects the type. */
-  async function createNote(kind: NewKind = lastKind()) {
-    const r = await askPageFormat({ title: "Create", ok: "Create", initial: lastFormat(), kind });
+  async function createNote(kind: NewKind = lastKind(), parent: string | null = ui.folder) {
+    const r = await askPageFormat({ title: kind === "notebook" && parent && sectionsCtx() ? "New section" : "Create", ok: "Create", initial: lastFormat(), kind });
     if (!r) return;
-    if (r.kind === "notebook") { await newFolder(r.name || "Notebook"); return; }
+    if (r.kind === "notebook") { await newFolder(r.name || "Notebook", parent); return; }
     pref.set("sn.format", JSON.stringify(r.format));
     pref.set("sn.kind", r.kind);
     newNote(r.format, r.kind);
@@ -1452,7 +1672,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("lib-main").addEventListener("pointerdown", () => { if (window.innerWidth < 820 && !collapsed()) setCollapsed(true); });
 
   document.querySelectorAll<HTMLElement>(".side-item").forEach((b) =>
-    b.addEventListener("click", () => { ui.filter = b.dataset.filter as "all" | "trash"; renderLibrary(); })
+    b.addEventListener("click", () => { ui.filter = b.dataset.filter as typeof ui.filter; if (ui.filter !== "all") ui.folder = null; renderLibrary(); })
   );
   document.querySelectorAll<HTMLElement>("#lib-tabs button").forEach((b) =>
     b.addEventListener("click", () => { ui.kind = b.dataset.kind as typeof ui.kind; renderLibrary(); })
