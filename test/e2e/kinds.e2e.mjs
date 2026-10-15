@@ -29,6 +29,8 @@ await click("#pm-cancel");
 let dlg = await create("notebook");
 ok(!dlg.size && /endless/.test(dlg.note), "Notebook hides paper/orientation and explains itself");
 const nb = await box();
+await click("#tool-pen");
+await drag([[nb.x + 300, nb.y + 200], [nb.x + 400, nb.y + 240], [nb.x + 500, nb.y + 200]]); // something on page 1, so the note is kept
 const before = await label();
 await wheel(nb.x + nb.width / 2, nb.y + nb.height / 2, 500, 14);
 const after = await label();
@@ -37,6 +39,11 @@ ok(pages(after) > pages(before), `scrolling down adds pages by itself (${before}
 await wheel(nb.x + nb.width / 2, nb.y + nb.height / 2, 500, 14);
 ok(pages(await label()) > pages(after), `and keeps going (${await label()})`);
 ok(await ev(`document.getElementById('add-page-pill').classList.contains('hidden')`), "no 'Add page' button: it is one continuous sheet");
+const grown = pages(await label());
+await click("#btn-back"); await sleep(900);
+await ev(`[...document.querySelectorAll('.card:not(.create)')][0].querySelector('.card-thumb').click()`); await sleep(1500);
+const trimmed = pages(await label());
+ok(trimmed < grown && trimmed >= 2 && trimmed <= 3, `leaving and reopening drops the empty pages piled up at the end, keeping one spare (${grown} -> ${trimmed})`);
 await click("#btn-back"); await sleep(600);
 
 // ---- infinite: ink anywhere

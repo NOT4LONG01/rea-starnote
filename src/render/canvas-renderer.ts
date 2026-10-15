@@ -972,6 +972,30 @@ export class CanvasRenderer {
     }
   }
 
+  /**
+   * Notebook: drop the empty pages at the end beyond one spare (they pile up when you scroll fast). Called when a note is
+   * opened or left, never while you scroll (the notebook would just grow them back).
+   */
+  public trimNotebookTail() {
+    const d = this.doc;
+    if (!d?.continuous || d.layout !== "stack") return;
+    const empty = (t: ParsedTile) => {
+      const r = t.pageRect ?? t.rect;
+      return !t.strokes.length && !t.textBoxes?.length && !(d.addedTextBoxes ?? []).some((b) => b.tag === t.pageTag)
+        && !this.userDrawnStrokes.some((st) => st.points.some((p) => p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom));
+    };
+    let trimmed = false;
+    for (;;) {
+      const tiles = [...d.tiles.values()];
+      if (tiles.length <= 2 || !empty(tiles[tiles.length - 1]) || !empty(tiles[tiles.length - 2])) break;
+      const last = tiles[tiles.length - 1];
+      if (last.saved !== false) (d.removedPages ??= []).push(last.pageTag);
+      d.tiles.delete(last.pageTag);
+      trimmed = true;
+    }
+    if (trimmed) this.restack();
+  }
+
   private growing = false;
   /** Notebook: when the view nears the end of the last page, another page is added: the sheet never runs out. */
   private maybeGrowNotebook() {
