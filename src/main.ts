@@ -415,6 +415,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     h.innerHTML = "";
     if (ui.filter === "trash") { h.textContent = "Trash"; return; }
     if (ui.filter === "quick") { h.textContent = "Quick Notes"; return; }
+    if (ui.query.trim()) { h.textContent = "Search in all notes"; return; } // a search is not limited to the open notebook
     const path = pathOf(items, ui.folder);
     const crumb = (label: string, id: string | null, current: boolean) => {
       const b = el(current ? "span" : "button", "crumb", label);
@@ -1667,6 +1668,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const collapsed = () => libView.classList.contains("side-collapsed");
   const setCollapsed = (v: boolean) => { libView.classList.toggle("side-collapsed", v); pref.set("sn.side", v ? "1" : "0"); };
   setCollapsed(window.innerWidth < 820 || pref.get("sn.side", "0") === "1"); // phones always start with the sidebar hidden
+  let wasNarrow = window.innerWidth < 820;
+  window.addEventListener("resize", () => { // turning a phone to portrait: the sidebar would cover half the library
+    const narrow = window.innerWidth < 820;
+    if (narrow && !wasNarrow && !collapsed()) libView.classList.add("side-collapsed"); // not remembered: wide again, it is as before
+    wasNarrow = narrow;
+  });
   $("btn-sidebar-toggle").addEventListener("click", () => setCollapsed(true));
   $("btn-sidebar-open").addEventListener("click", () => setCollapsed(false));
   $("lib-main").addEventListener("pointerdown", () => { if (window.innerWidth < 820 && !collapsed()) setCollapsed(true); });
@@ -2256,6 +2263,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!autoSyncOn()) setSyncStatus("Auto-sync off");
   runSync(false);
   void refreshThumbnails();
+
+  /**
+   * Android's Back button (MainActivity.kt asks this first): close whatever is on top, else go back one place.
+   * Returns false only when there is nowhere left to go, and the app then closes as usual.
+   */
+  (window as any).__reaBack = (): boolean => {
+    const open = (id: string) => !$(id).classList.contains("hidden");
+    if (!pop.classList.contains("hidden")) { closePopover(); return true; }
+    if (open("move-modal")) { $("move-cancel").click(); return true; }
+    if (open("page-modal")) { $("pm-cancel").click(); return true; }
+    if (open("zotero-modal")) { $("zotero-modal").classList.add("hidden"); return true; }
+    if (open("gdrive-modal")) { $("gdrive-modal").classList.add("hidden"); return true; }
+    if (inEditor()) {
+      if (te.open) { closeTextEditor(); return true; }  // the Math panel: like Cancel
+      if (inl.on) { commitInline(); return true; }      // typing on the page: keep what was typed
+      if (optionsOpen) { optionsOpen = false; renderToolOptions(); return true; }
+      void leaveToLibrary();
+      return true;
+    }
+    if (ui.query) { ui.query = ""; $<HTMLInputElement>("lib-search").value = ""; renderLibrary(); return true; }
+    if (ui.filter !== "all") { ui.filter = "all"; renderLibrary(); return true; }
+    if (ui.folder) {
+      const ctx = sectionsCtx(); // in the sections view a section and its notebook are one place: Back leaves the notebook
+      openFolder(ctx && viewOf(ctx.nb.id) === "sections" ? ctx.nb.parentId ?? null : items.find((i) => i.id === ui.folder)?.parentId ?? null);
+      return true;
+    }
+    return false;
+  };
 
   /**
    * Card pictures are drawn when a note is saved, so older cards keep an older look (raw $$latex$$, wide lines). Redraw them

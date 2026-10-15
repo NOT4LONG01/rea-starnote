@@ -9,6 +9,7 @@ const tabs = () => ev(`[...document.querySelectorAll('#lib-sections .sec-tab:not
 const rows = () => ev(`[...document.querySelectorAll('#lib-sections .page-row:not(.folder) .pr-title')].map(e => e.textContent).join(',')`);
 const notebook = async (name, via) => { await click(via); await click('#pm-kind button[data-v="notebook"]'); await ev(`document.getElementById('pm-name').value = ${JSON.stringify(name)}`); await click("#pm-ok"); await sleep(300); };
 const draw = async () => { const r = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse); await click("#tool-pen"); await drag([[r.x + 500, r.y + 300], [r.x + 600, r.y + 330], [r.x + 700, r.y + 300]]); };
+const openNb = async (title) => { await ev(`[...document.querySelectorAll('#lib-grid .card')].find(c => c.querySelector('.card-title span')?.textContent === ${JSON.stringify(title)}).querySelector('.card-thumb').click()`); await sleep(500); };
 const rename = async (title) => { await ev(`window.prompt = () => ${JSON.stringify(title)}`); await click("#btn-more"); await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Rename')).click()`); await sleep(400); };
 
 // a notebook opens in the grid; the switch shows only inside a notebook
@@ -48,6 +49,17 @@ ok(await rows() === "Dynamics,Kinematics", `dragging a page above another reorde
 await ev(`[...document.querySelectorAll('#lib-sections .page-row')].find(e => e.textContent.includes('Kinematics')).querySelector('button').click()`); await sleep(300);
 await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.trim() === 'Move up').click()`); await sleep(600);
 ok(await rows() === "Kinematics,Dynamics", "and Move up in a page's menu does it on touch");
+
+// Android's Back button (the app's own handler): editor -> library, section -> out of the notebook, top level -> leave the app
+await ev(`[...document.querySelectorAll('#lib-sections .page-row')][0].click()`); await sleep(1200);
+const backed = await ev(`window.__reaBack()`); await sleep(800); // leaving saves first
+ok(backed === true && await ev(`document.getElementById('view-editor').classList.contains('hidden')`), "Back in the editor returns to the library");
+ok(await ev(`[...document.querySelectorAll('#lib-title .crumb')].map(e => e.textContent).join(' > ')`) === "All notes > Physics > Mechanics", "to the section it came from");
+await click("#lib-sections .sec-tab.active .sec-menu");
+ok(await ev(`window.__reaBack()`) === true && await ev(`document.getElementById('popover').classList.contains('hidden')`), "Back closes an open menu first");
+ok(await ev(`window.__reaBack()`) === true && await ev(`document.getElementById('lib-title').textContent`) === "All notes", "then leaves the notebook (not just the section)");
+ok(await ev(`window.__reaBack()`) === false, "at the top level Back is left to Android (the app closes)");
+await openNb("Physics");
 
 // colour of a section
 await click("#lib-sections .sec-tab.active .sec-menu");
