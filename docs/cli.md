@@ -36,6 +36,7 @@ rea-starnote validate weekly.note && echo fine
 ```
 
 ## Limits
+- PDF export of a free-form StarNote canvas includes only the tiles that have ink, text or a background (an empty 12-tile canvas with ink on 3 gives a 3-page PDF); a page-stack note keeps its blank pages.
 - PDF and SVG export draw strokes, text and page layout. The **page backgrounds of PDF-based notes are bitmaps and are not
   drawn** (the command line has no image decoder); use the app to export those with their background.
 - `validate` checks structure, not whether the real StarNote app opens the file (that check is still open, see
