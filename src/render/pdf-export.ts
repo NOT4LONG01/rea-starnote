@@ -16,6 +16,7 @@ export interface PdfExportOptions {
 }
 
 const PAGE_W = 595.28; // A4 width in PDF points; height follows the page's own aspect ratio
+const PAGE_H = 841.89; // A4 height: the height of a notebook slice
 
 async function browserEncodeJpeg(src: NonNullable<ParsedTile["backgroundImage"]>): Promise<EncodedImage> {
   const s = src as any;
@@ -54,19 +55,38 @@ function selectPages(doc: StarNoteDocument): ParsedTile[] {
   return [{ pageTag: "Page[0-0]", rect: { left: 0, top: 0, right: 2100, bottom: 2100 }, strokes: [] }];
 }
 
+/**
+ * A notebook is one endless sheet: it is cut into A4-shaped pages (full width, A4 height), so printing and reading work, instead of
+ * one square page per 2100-unit tile. Every slice knows the world range it shows and where the ruling starts.
+ */
+interface Slice extends ParsedTile { slice: { phase: number } }
+function notebookSlices(doc: StarNoteDocument): Slice[] {
+  const tiles = selectPages(doc);
+  const first = tiles[0], pr = first.pageRect ?? first.rect, sheetBottom = (tiles[tiles.length - 1].pageRect ?? tiles[tiles.length - 1].rect).bottom;
+  const width = pr.right - pr.left, step = spacingOf(first), sliceH = width * (PAGE_H / PAGE_W);
+  const out: Slice[] = [];
+  for (let y = pr.top; y < sheetBottom - 1; y += sliceH) {
+    const rect = { left: pr.left, top: y, right: pr.right, bottom: y + sliceH };
+    out.push({ pageTag: "slice", rect, pageRect: rect, strokes: [], template: first.template, spacing: first.spacing, saved: true, slice: { phase: (y - pr.top) % step } });
+  }
+  return out;
+}
+
 /** PDF operators for a page template: ruled lines, grid, or dots (dots are zero-length dashes with round caps). */
-function templateOps(kind: string, pr: { left: number; top: number; right: number; bottom: number }, k: number, H: number, spacing: number, seamless: boolean): string {
+function templateOps(kind: string, pr: { left: number; top: number; right: number; bottom: number }, k: number, H: number, spacing: number, seamless: boolean, phase = 0): string {
   if (kind === "blank") return "";
-  const step = spacing * k, y0 = seamless ? 0 : step, w = (pr.right - pr.left) * k, h = (pr.bottom - pr.top) * k;
+  const step = spacing * k, x0 = seamless ? 0 : step;
+  const y0 = phase ? step - phase * k : x0; // phase: how far into a ruling period a notebook slice starts
+  const w = (pr.right - pr.left) * k, h = (pr.bottom - pr.top) * k;
   let ops = "";
   if (kind === "dots") {
     ops += `0.8 0.84 0.88 RG 1 J ${num(3.2 * k * 1.6)} w [0 ${num(step)}] ${num(0)} d\n`;
-    for (let y = y0; y < h - step / 2; y += step) ops += `${num(step)} ${num(H - y)} m ${num(w - step / 2)} ${num(H - y)} l S\n`;
+    for (let y = y0; y < h - step / 2; y += step) ops += `${num(x0)} ${num(H - y)} m ${num(w - step / 2)} ${num(H - y)} l S\n`;
     return ops + "[] 0 d 0 J\n";
   }
   ops += "0.89 0.9 0.92 RG 0.5 w\n";
   for (let y = y0; y < h; y += step) ops += `0 ${num(H - y)} m ${num(w)} ${num(H - y)} l S\n`;
-  if (kind === "grid") for (let x = y0; x < w; x += step) ops += `${num(x)} 0 m ${num(x)} ${num(H)} l S\n`;
+  if (kind === "grid") for (let x = x0; x < w; x += step) ops += `${num(x)} 0 m ${num(x)} ${num(H)} l S\n`;
   return ops;
 }
 
@@ -127,7 +147,7 @@ export async function exportAnnotatedPdf(doc: StarNoteDocument, title: string, o
   const text = (s: string) => push(enc.encode(s));
   const beginObj = (n: number) => { offsets[n] = size; text(`${n} 0 obj\n`); };
 
-  const pages = selectPages(doc);
+  const pages: ParsedTile[] = doc.continuous && doc.layout === "stack" ? notebookSlices(doc) : selectPages(doc);
   // object numbers: 1 catalog, 2 pages, 3 font, 4 info, then per page: page, content, [image]
   let next = 5;
   const layout = pages.map(() => ({ page: next++, content: next++, image: 0 }));
@@ -151,27 +171,33 @@ export async function exportAnnotatedPdf(doc: StarNoteDocument, title: string, o
     const pr = tile.pageRect ?? tile.rect;
     const k = PAGE_W / (pr.right - pr.left);
     const H = (pr.bottom - pr.top) * k;
-    // tile-local -> PDF points (origin bottom-left)
-    const toX = (x: number) => (tile.rect.left + x - pr.left) * k;
-    const toY = (y: number) => H - (tile.rect.top + y - pr.top) * k;
+    const slice = (tile as Slice).slice;
+    // a notebook slice shows parts of the tiles under it; an ordinary page shows its own tile
+    const sources = slice ? [...doc.tiles.values()].filter((t) => { const r = t.pageRect ?? t.rect; return r.bottom > pr.top - 100 && r.top < pr.bottom + 100; }) : [tile];
 
     const alphas = new Set<number>();
     let ops = "";
     if (images[i]) {
       ops += `q ${num(PAGE_W)} 0 0 ${num(H)} 0 0 cm /Im0 Do Q\n`;
     } else {
-      ops += `1 1 1 rg 0 0 ${num(PAGE_W)} ${num(H)} re f\n${templateOps(tile.template ?? "ruled", pr, k, H, spacingOf(tile), !!doc.continuous)}`;
+      ops += `1 1 1 rg 0 0 ${num(PAGE_W)} ${num(H)} re f\n${templateOps(tile.template ?? "ruled", pr, k, H, spacingOf(tile), !!doc.continuous, slice?.phase ?? 0)}`;
     }
-    for (const s of tile.strokes) ops += strokePath(s, (x) => toX(x), (y) => toY(y), alphas);
-    for (const tb of tile.textBoxes ?? []) {
-      const fs = Math.max(8, tb.fontSize) * k;
-      let y = toY(tb.rect.top) - fs;
-      ops += `BT /F1 ${num(fs)} Tf ${rgb(tb.color)} rg\n`;
-      for (const line of tb.text.split("\n")) {
-        if (line.trim()) ops += `1 0 0 1 ${num(toX(tb.rect.left))} ${num(y)} Tm (${pdfString(line)}) Tj\n`;
-        y -= fs * 1.25;
+    if (slice) ops += `0 0 ${num(PAGE_W)} ${num(H)} re W n\n`; // ink from the neighbouring tiles is cut at the slice's edge
+    for (const src of sources) {
+      // tile-local -> PDF points (origin bottom-left)
+      const toX = (x: number) => (src.rect.left + x - pr.left) * k;
+      const toY = (y: number) => H - (src.rect.top + y - pr.top) * k;
+      for (const s of src.strokes) ops += strokePath(s, toX, toY, alphas);
+      for (const tb of src.textBoxes ?? []) {
+        const fs = Math.max(8, tb.fontSize) * k;
+        let y = toY(tb.rect.top) - fs;
+        ops += `BT /F1 ${num(fs)} Tf ${rgb(tb.color)} rg\n`;
+        for (const line of tb.text.split("\n")) {
+          if (line.trim()) ops += `1 0 0 1 ${num(toX(tb.rect.left))} ${num(y)} Tm (${pdfString(line)}) Tj\n`;
+          y -= fs * 1.25;
+        }
+        ops += "ET\n";
       }
-      ops += "ET\n";
     }
 
     const l = layout[i];
