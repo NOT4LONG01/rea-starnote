@@ -20,6 +20,7 @@ const at = [box.x + box.width / 2 - 100, box.y + 260];
 await drag([at]);
 let s = await state();
 ok(s.ghost === "text-ghost" && s.editorHidden, "tapping the page with the Text tool starts typing in place (no floating editor box)");
+ok(await ev(`!document.getElementById('tool-options').classList.contains('hidden') && [...document.querySelectorAll('#tool-options .opt-chip')].some(e => e.textContent === 'B')`), "the Text popover (size, bold, italic) stays open while typing");
 
 const overlayBefore = await dark(".note-overlay");
 await type("Hello");

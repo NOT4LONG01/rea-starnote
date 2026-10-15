@@ -1104,6 +1104,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     ghost.style.top = `${Math.max(0, req.clientY - host.top)}px`;
     ghost.focus({ preventScroll: true });
     ghost.setSelectionRange(ghost.value.length, ghost.value.length);
+    optionsOpen = true; // the size / bold / italic chips stay in reach while editing (touching the page closed them)
     clearInterval(inl.blink);
     inl.blink = window.setInterval(() => renderer.blinkCaret(), 530);
     renderToolOptions();
