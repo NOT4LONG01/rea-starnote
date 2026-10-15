@@ -406,6 +406,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function park() {
     commitInline();
+    void commitTextEditor(true);
     if (active) active.view = renderer.snapshot();
   }
 
@@ -482,6 +483,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function saveSession(s: Session): Promise<void> {
     if (s === active) commitInline(); // text still being typed goes in first
     const p = (s.saving ?? Promise.resolve()).then(async () => {
+      if (s === active && te.open) await commitTextEditor(true);
       const pending = [...pendingStrokes(s)];
       const erased = [...erasedSaved(s)];
       if (s.isNew && pending.length === 0 && !textChanged(s) && !pagesChanged(s)) return; // untouched new note: nothing to keep
@@ -566,7 +568,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     clearTimeout(autosaveTimer);
     autosaveTimer = window.setTimeout(() => {
       if (!active || !isDirty(active)) return;
-      if (renderer.isBusy() || renderer.hasSelection() || inl.on) { scheduleAutosave(); return; } // not in the middle of a gesture or with a selection held
+      if (renderer.isBusy() || renderer.hasSelection() || inl.on || te.open) { scheduleAutosave(); return; } // not in the middle of a gesture or with a selection held
       void saveSession(active);
     }, AUTOSAVE_MS);
   }
@@ -814,7 +816,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function setTool(tool: Tool) {
     const changed = renderer.activeTool !== tool;
-    if (tool !== "text") { closeTextEditor(); commitInline(); inl.pendingMath = false; }
+    if (tool !== "text") { void commitTextEditor(true); commitInline(); inl.pendingMath = false; }
     renderer.activeTool = tool;
     if (tool !== "lasso" && renderer.hasSelection()) { renderer.clearSelection(); renderer.render(); }
     for (const t of TOOLS) $(`tool-${t}`).classList.toggle("active", t === tool);
@@ -960,86 +962,88 @@ document.addEventListener("DOMContentLoaded", async () => {
     ["lim", "\\lim_{x\\to\\infty}"], ["α", "\\alpha"], ["β", "\\beta"], ["π", "\\pi"], ["θ", "\\theta"], ["∞", "\\infty"],
     ["≤", "\\leq"], ["≠", "\\neq"], ["×", "\\times"], ["→", "\\to"], ["( )", "\\left( \\right)"], ["matrix", "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}"],
   ];
+  // The formula editor: a docked panel with the LaTeX source. The typeset formula is drawn on the page itself, live,
+  // at the place it will end up. Esc / Ctrl+Enter / Done commit (a formula with an error is refused); Cancel discards.
   const te = {
-    at: { x: 0, y: 0 }, box: null as ParsedTextBox | null, size: 40, bold: false, italic: false, color: "#000000", timer: 0, seq: 0,
-    el: $("text-editor"), input: $<HTMLTextAreaElement>("te-input"), math: $<HTMLInputElement>("te-math"),
-    preview: $("te-preview"), snips: $("te-snips"),
+    at: { x: 0, y: 0 }, box: null as ParsedTextBox | null, size: 40, color: "#000000", timer: 0, seq: 0, open: false,
+    el: $("text-editor"), input: $<HTMLTextAreaElement>("te-input"), error: $("te-error"), snips: $("te-snips"),
   };
   for (const [label, tex] of MATH_SNIPPETS) {
     const b = el("button", "", label);
     b.title = tex;
     b.addEventListener("click", () => {
-      const i = te.input, a = i.selectionStart, z = i.selectionEnd;
-      i.setRangeText(tex, a, z, "end");
+      const i = te.input;
+      i.setRangeText(tex, i.selectionStart, i.selectionEnd, "end");
       i.focus();
       refreshPreview();
     });
     te.snips.appendChild(b);
   }
-  function closeTextEditor() { te.el.classList.add("hidden"); te.box = null; te.seq++; }
+  function closeTextEditor() {
+    te.open = false; te.el.classList.add("hidden"); te.box = null; te.seq++;
+    renderer.setTextDraft(null);
+  }
+  /** Typeset the source and show it on the page; an error keeps the last good picture and is written under the code. */
   async function refreshPreview() {
     const mine = ++te.seq;
-    te.preview.classList.toggle("hidden", !te.math.checked);
-    te.snips.classList.toggle("hidden", !te.math.checked);
-    te.input.classList.toggle("mono", te.math.checked);
-    if (!te.math.checked) return;
     const latex = te.input.value.trim();
-    if (!latex) { te.preview.classList.remove("error"); te.preview.textContent = "Preview appears here"; return; }
+    if (!latex) { te.error.classList.add("hidden"); renderer.updateTextDraft({ math: { img: null, w: te.size * 2, h: te.size } }); return; }
     try {
-      const r = await renderMath(latex, 30, "#000000");
+      const r = await renderMath(latex, te.size, te.color);
       if (mine !== te.seq) return;
-      te.preview.classList.toggle("error", !!r.error);
-      if (r.error) te.preview.textContent = r.error; else te.preview.innerHTML = r.svg;
+      te.error.classList.toggle("hidden", !r.error);
+      if (r.error) { te.error.textContent = r.error; return; }
+      const img = new Image();
+      img.onload = () => { if (mine === te.seq) renderer.updateTextDraft({ math: { img, w: r.width, h: r.height } }); };
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(r.svg);
     } catch (err: any) {
-      te.preview.classList.add("error");
-      te.preview.textContent = `Could not typeset: ${err.message}`;
+      te.error.classList.remove("hidden");
+      te.error.textContent = `Could not typeset: ${err.message}`;
     }
   }
   const schedulePreview = () => { clearTimeout(te.timer); te.timer = window.setTimeout(refreshPreview, 150); };
   function openTextEditor(req: { x: number; y: number; clientX: number; clientY: number; box: ParsedTextBox | null }) {
     const b = req.box;
+    te.open = true;
     te.at = { x: req.x, y: req.y };
     te.box = b;
-    te.size = b?.fontSize ?? Number(pref.get("sn.textsize", "40"));
-    te.bold = !!b?.isBold; te.italic = !!b?.isItalic;
+    te.size = b?.fontSize ?? Number(pref.get("sn.mathsize", "40"));
     te.color = b?.color ?? penColors.ink; // text uses the pen colour, never the highlighter's
-    const math = !!b && isMathText(b.text);
-    te.math.checked = math;
-    te.input.value = b ? (math ? latexOf(b.text) : b.text) : "";
+    te.input.value = b ? latexOf(b.text) : "";
+    te.error.classList.add("hidden");
     $("te-delete").classList.toggle("hidden", !b);
-    $("te-bold").classList.toggle("on", te.bold);
-    $("te-italic").classList.toggle("on", te.italic);
-    const host = $("canvas-container").getBoundingClientRect();
     te.el.classList.remove("hidden");
-    const w = te.el.offsetWidth, h = te.el.offsetHeight;
-    te.el.style.left = `${Math.max(10, Math.min(host.width - w - 10, req.clientX - host.left))}px`;
-    te.el.style.top = `${Math.max(10, Math.min(host.height - h - 10, req.clientY - host.top + 12))}px`;
+    const o = b ? renderer.textBoxOrigin(b) : te.at;
+    renderer.setTextDraft({ x: o.x, y: o.y, box: b, text: "", caret: 0, caretOn: false, size: te.size, bold: false, italic: false, color: te.color, math: { img: null, w: te.size * 2, h: te.size } });
+    const panel = te.el.getBoundingClientRect(), bottomSheet = te.el.offsetWidth >= $("canvas-container").clientWidth - 2;
+    const r = renderer.textDraftRect()!;
+    renderer.revealRect(r, bottomSheet ? { right: 0, bottom: panel.height } : { right: panel.width, bottom: 0 }); // keep the formula clear of the panel
     refreshPreview();
     te.input.focus();
   }
-  async function commitTextEditor() {
-    const math = te.math.checked;
+  /** Commits the formula. Returns false (panel stays open) when the source has an error; `force` closes anyway. */
+  async function commitTextEditor(force = false): Promise<boolean> {
+    if (!te.open) return true;
     const raw = te.input.value.replace(/\s+$/, "");
-    if (!raw.trim()) { // emptied: that deletes an existing box, or just closes
-      if (te.box) renderer.commitTextBox(te.box, null, te.at);
+    if (!raw.trim()) { // emptied: that deletes an existing formula, or just closes
+      const box = te.box;
       closeTextEditor();
-      return;
+      if (box) renderer.commitTextBox(box, null, te.at);
+      return true;
     }
-    let size: { width: number; height: number };
-    let text = raw;
-    if (math) {
-      const r = await renderMath(raw.trim(), te.size, te.color);
-      if (r.error) { showToast(`Fix the formula first: ${r.error}`, "error"); return; }
-      size = { width: r.width, height: r.height };
-      text = wrapLatex(raw);
-    } else {
-      size = renderer.measureText(raw, te.size, te.bold, te.italic);
-    }
-    if (renderer.commitTextBox(te.box, { text, color: te.color, fontSize: te.size, isBold: te.bold, isItalic: te.italic, size }, te.at)) {
-      pref.set("sn.textsize", String(te.size));
+    const r = await renderMath(raw.trim(), te.size, te.color);
+    if (r.error) {
+      showToast(`Fix the formula first: ${r.error}`, "error");
+      if (!force) return false;
       closeTextEditor();
+      return true;
     }
+    const box = te.box;
+    closeTextEditor();
+    if (renderer.commitTextBox(box, { text: wrapLatex(raw), color: te.color, fontSize: te.size, size: { width: r.width, height: r.height } }, te.at)) pref.set("sn.mathsize", String(te.size));
+    return true;
   }
+  const resizeMath = (d: number) => { te.size = Math.max(20, Math.min(160, te.size + d)); renderer.updateTextDraft({ size: te.size }); refreshPreview(); };
 
   // ---------- typing right on the page (Text tool): a hidden textarea takes the keys (and the phone keyboard / IME),
   // the renderer draws the text and caret live where it will end up. Tap elsewhere, switch tool, or Esc commits.
@@ -1085,13 +1089,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     renderToolOptions();
   }
-  renderer.onTextRequest = (req) => {
-    if (inl.on) {
+  renderer.onTextRequest = async (req) => {
+    if (inl.on || te.open) {
       const r = renderer.textDraftRect();
-      if (r && req.x >= r.l && req.x <= r.r && req.y >= r.t && req.y <= r.b) { ghost.focus({ preventScroll: true }); return; } // tap on the text being typed: keep typing
+      if (r && req.x >= r.l && req.x <= r.r && req.y >= r.t && req.y <= r.b) { (te.open ? te.input : ghost).focus({ preventScroll: true }); return; } // tap on what is being edited: keep editing
       commitInline();
+      if (!(await commitTextEditor())) return; // a formula with an error stays open
     }
-    if (inl.pendingMath || (req.box && isMathText(req.box.text))) { inl.pendingMath = false; openTextEditor(req); return; } // formulas: the floating editor, for now
+    if (inl.pendingMath || (req.box && isMathText(req.box.text))) { inl.pendingMath = false; openTextEditor(req); return; }
     openInline(req);
   };
   ghost.addEventListener("input", syncDraft);
@@ -1103,19 +1108,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     else requestAnimationFrame(syncDraft);
   });
   te.input.addEventListener("input", schedulePreview);
-  te.math.addEventListener("change", refreshPreview);
   te.input.addEventListener("keydown", (e) => {
     e.stopPropagation();
-    if (e.key === "Escape") closeTextEditor();
-    else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void commitTextEditor(); }
+    if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) { e.preventDefault(); void commitTextEditor(); }
   });
   $("te-ok").addEventListener("click", () => void commitTextEditor());
   $("te-cancel").addEventListener("click", closeTextEditor);
-  $("te-delete").addEventListener("click", () => { if (te.box) renderer.commitTextBox(te.box, null, te.at); closeTextEditor(); });
-  $("te-smaller").addEventListener("click", () => { te.size = Math.max(20, te.size - 8); refreshPreview(); });
-  $("te-bigger").addEventListener("click", () => { te.size = Math.min(160, te.size + 8); refreshPreview(); });
-  $("te-bold").addEventListener("click", () => { te.bold = !te.bold; $("te-bold").classList.toggle("on", te.bold); });
-  $("te-italic").addEventListener("click", () => { te.italic = !te.italic; $("te-italic").classList.toggle("on", te.italic); });
+  $("te-delete").addEventListener("click", () => { const box = te.box; closeTextEditor(); if (box) renderer.commitTextBox(box, null, te.at); });
+  $("te-smaller").addEventListener("click", () => resizeMath(-8));
+  $("te-bigger").addEventListener("click", () => resizeMath(8));
 
   // ---------- selection: copy / delete / paste buttons
   const syncSelectionButtons = () => {

@@ -62,11 +62,47 @@ await click("tool-pen");
 await sleep(200);
 ok(await dark("#note-canvas") > blank + 200 && (await state()).ghost !== "text-ghost", "choosing another tool commits the text");
 
-// Math still opens the formula editor
+// Math: a docked panel with the LaTeX source, the formula typeset live on the page
+const panel = () => ev(`(() => { const p = document.getElementById('text-editor'); const r = p.getBoundingClientRect(); return JSON.stringify({ hidden: p.classList.contains('hidden'), left: r.left, right: r.right, err: !document.getElementById('te-error').classList.contains('hidden'), errText: document.getElementById('te-error').textContent, focus: document.activeElement?.id }); })()`).then(JSON.parse);
+const base = await dark("#note-canvas");
 await click("tool-text");
 await ev(`[...document.querySelectorAll('#tool-options .opt-chip')].find(e => e.textContent === 'Math').click()`); await sleep(200);
-await drag([[at[0] + 200, at[1] + 300]]);
-ok(!(await state()).editorHidden, "Math, then a tap, opens the formula editor");
+const spot = [at[0] - 100, at[1] + 300];
+await drag([spot]);
+let pn = await panel();
+ok(!pn.hidden && pn.focus === "te-input" && pn.left > box.x + box.width / 2, "Math, then a tap, opens the side panel docked at the right with the source focused");
+await sleep(500);
+const mathBefore = await dark(".note-overlay");
+await type("x=\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}");
+await sleep(1200);
+const mathLive = await dark(".note-overlay");
+ok(mathLive > mathBefore + 300, `the formula is typeset live on the page while typing (${mathBefore} -> ${mathLive})`);
+ok(!(await panel()).err, "no error line for a valid formula");
+
+// a broken formula is refused, with the same message as before; the last good picture stays
+await type("\\frac{");
+await sleep(900);
+pn = await panel();
+ok(pn.err, `an error shows under the code (${pn.errText.slice(0, 60)})`);
+await key("Escape");
+await sleep(500);
+pn = await panel();
+ok(!pn.hidden, "Esc does not commit a formula with an error: the panel stays open");
+await ev(`(() => { const i = document.getElementById('te-input'); i.value = i.value.replace(/\\\\frac\{$/, ''); i.dispatchEvent(new Event('input', {bubbles:true})); })()`);
+await sleep(900);
+await key("Escape");
+await sleep(600);
+pn = await panel();
+const mathCommitted = await dark("#note-canvas");
+ok(pn.hidden && mathCommitted > base + 300, `Esc commits a valid formula onto the page and closes the panel (${base} -> ${mathCommitted})`);
+
+// tapping the formula reopens it with its source
+await drag([[spot[0] + 6, spot[1] + 6]]);
+await sleep(400);
+pn = await panel();
+ok(!pn.hidden && /frac/.test(await ev(`document.getElementById('te-input').value`)), "tapping a formula reopens the panel with its LaTeX source");
+await ev(`document.getElementById('te-cancel').click()`); await sleep(300);
+ok((await panel()).hidden && Math.abs(await dark("#note-canvas") - mathCommitted) < 50, "Cancel closes it and the formula is unchanged");
 
 b.close();
 finish();

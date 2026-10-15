@@ -40,6 +40,8 @@ const NO_DOC_PAGE: PageRect = { left: 0, top: 0, right: 2100, bottom: 2100 };
 export interface TextDraft {
   x: number; y: number; box: ParsedTextBox | null; text: string; caret: number; caretOn: boolean;
   size: number; bold: boolean; italic: boolean; color: string;
+  /** Typeset formula (math drafts): shown instead of `text`; null while it is empty or not ready. */
+  math?: { img: HTMLImageElement | null; w: number; h: number };
 }
 
 export class CanvasRenderer {
@@ -623,17 +625,37 @@ export class CanvasRenderer {
   public updateTextDraft(patch: Partial<TextDraft>) {
     if (this.textDraft) { Object.assign(this.textDraft, patch); this.touchOverlay(); }
   }
+  /** Pan (not zoom) so that a world rectangle is on screen, clear of a panel docked over the right/bottom edge (CSS px). */
+  public revealRect(r: { l: number; t: number; r: number; b: number }, inset: { right: number; bottom: number }) {
+    const dpr = this.canvas.width / (this.canvas.clientWidth || 1), pad = 16 * dpr;
+    const W = this.canvas.width - inset.right * dpr, H = this.canvas.height - inset.bottom * dpr;
+    const shift = (lo: number, hi: number, size: number) => { let d = hi > size - pad ? size - pad - hi : 0; if (lo + d < pad) d = pad - lo; return d; };
+    const dx = shift(r.l * this.zoom + this.panX, r.r * this.zoom + this.panX, W);
+    const dy = shift(r.t * this.zoom + this.panY, r.b * this.zoom + this.panY, H);
+    if (dx || dy) { this.panX += dx; this.panY += dy; this.render(); }
+  }
   public blinkCaret() { if (this.textDraft) this.updateTextDraft({ caretOn: !this.textDraft.caretOn }); }
   public touchOverlay() { this.overlayDirty = true; this.drawOverlay(); }
   public textDraftRect(): { l: number; t: number; r: number; b: number } | null {
     const d = this.textDraft;
     if (!d) return null;
-    const m = this.measureText(d.text, d.size, d.bold, d.italic);
-    return { l: d.x - 4, t: d.y - 4, r: d.x + Math.max(m.width, d.size * 2) + 4, b: d.y + m.height + 4 };
+    const m = d.math ? { width: d.math.w, height: d.math.h } : this.measureText(d.text, d.size, d.bold, d.italic);
+    return { l: d.x - 4, t: d.y - 4, r: d.x + Math.max(m.width, d.size * 2) + 4, b: d.y + Math.max(m.height, d.size) + 4 };
   }
 
   private drawTextDraft(d: TextDraft) {
     const ctx = this.ctx, fs = Math.max(16, d.size), lh = fs * 1.25, accent = "#3b82f6";
+    if (d.math) { // a formula: the typeset image (the last good one while the source has an error), in the same frame
+      const r = this.textDraftRect()!;
+      ctx.save();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 1.5 / this.zoom;
+      ctx.setLineDash([6 / this.zoom, 4 / this.zoom]);
+      ctx.strokeRect(r.l, r.t, r.r - r.l, r.b - r.t);
+      if (d.math.img) ctx.drawImage(d.math.img, d.x, d.y, d.math.w, d.math.h);
+      ctx.restore();
+      return;
+    }
     ctx.save();
     ctx.font = this.textFont(d.size, d.bold, d.italic);
     ctx.textBaseline = "top";

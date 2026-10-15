@@ -114,20 +114,18 @@
         <main class="canvas-container" id="canvas-container">
           <canvas id="note-canvas"></canvas>
           <textarea id="text-ghost" class="text-ghost" aria-label="Text" tabindex="-1" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
-          <div id="text-editor" class="text-editor hidden" role="dialog" aria-label="Text">
-            <textarea id="te-input" rows="3" placeholder="Type text…" spellcheck="false"></textarea>
-            <div id="te-snips" class="te-snips hidden"></div>
-            <div id="te-preview" class="te-preview hidden"></div>
+          <div id="text-editor" class="text-editor hidden" role="dialog" aria-label="Math (LaTeX)">
+            <div class="te-head"><b>Math</b><span class="te-sub">LaTeX source; the formula is typeset on the page</span></div>
+            <textarea id="te-input" rows="4" placeholder="x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}" spellcheck="false" autocapitalize="off"></textarea>
+            <div id="te-error" class="te-error hidden"></div>
+            <div id="te-snips" class="te-snips"></div>
             <div class="te-bar">
-              <button id="te-smaller" class="icon-btn" title="Smaller text">A−</button>
-              <button id="te-bigger" class="icon-btn" title="Bigger text">A+</button>
-              <button id="te-bold" class="icon-btn" title="Bold"><b>B</b></button>
-              <button id="te-italic" class="icon-btn" title="Italic"><i>I</i></button>
-              <label class="te-math"><input type="checkbox" id="te-math" /> LaTeX math</label>
+              <button id="te-smaller" class="icon-btn" title="Smaller formula">A−</button>
+              <button id="te-bigger" class="icon-btn" title="Bigger formula">A+</button>
               <span class="spacer"></span>
               <button id="te-delete" class="btn btn-sm btn-danger hidden">Delete</button>
               <button id="te-cancel" class="btn btn-sm">Cancel</button>
-              <button id="te-ok" class="btn btn-sm btn-primary">Done</button>
+              <button id="te-ok" class="btn btn-sm btn-primary" title="Done (Esc or Ctrl+Enter)">Done</button>
             </div>
           </div>
           <button id="add-page-pill" class="add-page-pill hidden" title="Add a page at the end of the note"><i data-icon="plus"></i><span>Add page</span></button>
