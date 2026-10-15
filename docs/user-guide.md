@@ -36,7 +36,7 @@ on the same item. If a PDF is "not stored", file syncing is off for it in Zotero
 
 ## Exporting
 **More** menu: `.note` (opens again in the app), SVG (vector ink), PDF (pages with your ink on top; for PDF notes the
-original page is underneath). On Android, files are saved through the system "Save as" dialog.
+original page is underneath; a notebook is cut into A4-shaped pages and its empty tail is left out). On Android, files are saved through the system "Save as" dialog.
 
 ## Command line
 The same files can be inspected and converted without the app: [cli.md](cli.md).
