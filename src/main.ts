@@ -405,6 +405,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function park() {
+    commitInline();
     if (active) active.view = renderer.snapshot();
   }
 
@@ -479,6 +480,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   /** Writes the note (including strokes drawn since the last save) into the library. */
   function saveSession(s: Session): Promise<void> {
+    if (s === active) commitInline(); // text still being typed goes in first
     const p = (s.saving ?? Promise.resolve()).then(async () => {
       const pending = [...pendingStrokes(s)];
       const erased = [...erasedSaved(s)];
@@ -564,7 +566,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     clearTimeout(autosaveTimer);
     autosaveTimer = window.setTimeout(() => {
       if (!active || !isDirty(active)) return;
-      if (renderer.isBusy() || renderer.hasSelection()) { scheduleAutosave(); return; } // not in the middle of a gesture or with a selection held
+      if (renderer.isBusy() || renderer.hasSelection() || inl.on) { scheduleAutosave(); return; } // not in the middle of a gesture or with a selection held
       void saveSession(active);
     }, AUTOSAVE_MS);
   }
@@ -639,6 +641,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const tool = renderer.activeTool;
     const kind: Kind = (tool === "pen" || tool === "shape") && isHighlighter() ? "hl" : "ink";
     penColors[kind] = color;
+    if (inl.on) { inl.color = color; renderer.updateTextDraft({ color }); }
     pref.set(kind === "hl" ? "sn.hl" : "sn.ink", color);
     if (!colorOrder[kind].includes(color)) { colorOrder[kind][QUICK_COLORS - 1] = color; saveColorOrder(); } // a new color takes the last slot
     applyPenColor();
@@ -713,6 +716,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!sel && tool === "shape") {
       const g = group("Shape");
       for (const k of SHAPE_KINDS) chipButton(g, k.label, renderer.shapeKind === k.id, () => setShapeKind(k.id));
+    }
+    if (!sel && tool === "text") {
+      const g = group("Text");
+      chipButton(g, "A−", false, () => styleText({ size: Math.max(20, inl.size - 8) }));
+      chipButton(g, "A+", false, () => styleText({ size: Math.min(160, inl.size + 8) }));
+      chipButton(g, "B", inl.bold, () => styleText({ bold: !inl.bold }));
+      chipButton(g, "I", inl.italic, () => styleText({ italic: !inl.italic }));
+      chipButton(group(), "Math", inl.pendingMath, () => { inl.pendingMath = !inl.pendingMath; if (inl.pendingMath) showToast("Tap the page where the formula goes", "info"); renderToolOptions(); });
+      if (inl.on && inl.box) chipButton(group(), "Delete text", false, () => { ghost.value = ""; commitInline(); }, "danger");
     }
     if (!sel && tool === "eraser") {
       const g = group("Eraser size");
@@ -802,7 +814,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function setTool(tool: Tool) {
     const changed = renderer.activeTool !== tool;
-    if (tool !== "text") closeTextEditor();
+    if (tool !== "text") { closeTextEditor(); commitInline(); inl.pendingMath = false; }
     renderer.activeTool = tool;
     if (tool !== "lasso" && renderer.hasSelection()) { renderer.clearSelection(); renderer.render(); }
     for (const t of TOOLS) $(`tool-${t}`).classList.toggle("active", t === tool);
@@ -1028,7 +1040,68 @@ document.addEventListener("DOMContentLoaded", async () => {
       closeTextEditor();
     }
   }
-  renderer.onTextRequest = openTextEditor;
+
+  // ---------- typing right on the page (Text tool): a hidden textarea takes the keys (and the phone keyboard / IME),
+  // the renderer draws the text and caret live where it will end up. Tap elsewhere, switch tool, or Esc commits.
+  const ghost = $<HTMLTextAreaElement>("text-ghost");
+  const inl = { on: false, box: null as ParsedTextBox | null, at: { x: 0, y: 0 }, size: Number(pref.get("sn.textsize", "40")), bold: false, italic: false, color: "#000000", blink: 0, pendingMath: false };
+  const syncDraft = () => renderer.updateTextDraft({ text: ghost.value, caret: ghost.selectionStart, caretOn: true, size: inl.size, bold: inl.bold, italic: inl.italic, color: inl.color });
+  function styleText(p: { size?: number; bold?: boolean; italic?: boolean }) {
+    Object.assign(inl, p);
+    if (p.size) pref.set("sn.textsize", String(inl.size));
+    if (inl.on) { syncDraft(); ghost.focus({ preventScroll: true }); }
+    renderToolOptions();
+  }
+  function openInline(req: { x: number; y: number; clientX: number; clientY: number; box: ParsedTextBox | null }) {
+    const b = req.box;
+    if (!b && !renderer.isOnPage(req.x, req.y)) { showToast("Tap on a page to place text.", "info"); return; }
+    inl.on = true; inl.box = b;
+    inl.at = { x: req.x, y: req.y };
+    if (b) { inl.size = b.fontSize; inl.bold = !!b.isBold; inl.italic = !!b.isItalic; }
+    inl.color = b?.color ?? penColors.ink; // text uses the pen colour, never the highlighter's
+    ghost.value = b ? b.text : "";
+    const o = b ? renderer.textBoxOrigin(b) : inl.at;
+    renderer.setTextDraft({ x: o.x, y: o.y, box: b, text: ghost.value, caret: ghost.value.length, caretOn: true, size: inl.size, bold: inl.bold, italic: inl.italic, color: inl.color });
+    const host = $("canvas-container").getBoundingClientRect(); // the IME / keyboard anchors where the text is
+    ghost.style.left = `${Math.max(0, req.clientX - host.left)}px`;
+    ghost.style.top = `${Math.max(0, req.clientY - host.top)}px`;
+    ghost.focus({ preventScroll: true });
+    ghost.setSelectionRange(ghost.value.length, ghost.value.length);
+    clearInterval(inl.blink);
+    inl.blink = window.setInterval(() => renderer.blinkCaret(), 530);
+    renderToolOptions();
+  }
+  function commitInline() {
+    if (!inl.on) return;
+    const { box, at, size, bold, italic, color } = inl;
+    const raw = ghost.value.replace(/\s+$/, "");
+    inl.on = false; inl.box = null;
+    clearInterval(inl.blink);
+    ghost.blur();
+    renderer.setTextDraft(null);
+    if (!raw.trim()) { if (box) renderer.commitTextBox(box, null, at); }
+    else if (!box || raw !== box.text || size !== box.fontSize || bold !== !!box.isBold || italic !== !!box.isItalic || color !== box.color) {
+      renderer.commitTextBox(box, { text: raw, color, fontSize: size, isBold: bold, isItalic: italic, size: renderer.measureText(raw, size, bold, italic) }, at);
+    }
+    renderToolOptions();
+  }
+  renderer.onTextRequest = (req) => {
+    if (inl.on) {
+      const r = renderer.textDraftRect();
+      if (r && req.x >= r.l && req.x <= r.r && req.y >= r.t && req.y <= r.b) { ghost.focus({ preventScroll: true }); return; } // tap on the text being typed: keep typing
+      commitInline();
+    }
+    if (inl.pendingMath || (req.box && isMathText(req.box.text))) { inl.pendingMath = false; openTextEditor(req); return; } // formulas: the floating editor, for now
+    openInline(req);
+  };
+  ghost.addEventListener("input", syncDraft);
+  ghost.addEventListener("keyup", syncDraft);
+  ghost.addEventListener("click", syncDraft);
+  ghost.addEventListener("keydown", (e) => {
+    e.stopPropagation(); // keys typed on the page are not shortcuts
+    if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) { e.preventDefault(); commitInline(); }
+    else requestAnimationFrame(syncDraft);
+  });
   te.input.addEventListener("input", schedulePreview);
   te.math.addEventListener("change", refreshPreview);
   te.input.addEventListener("keydown", (e) => {

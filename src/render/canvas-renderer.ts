@@ -37,6 +37,11 @@ let drawingClipboard: ClipStroke[] = [];
 /** What the view shows before any note is open. */
 const NO_DOC_PAGE: PageRect = { left: 0, top: 0, right: 2100, bottom: 2100 };
 
+export interface TextDraft {
+  x: number; y: number; box: ParsedTextBox | null; text: string; caret: number; caretOn: boolean;
+  size: number; bold: boolean; italic: boolean; color: string;
+}
+
 export class CanvasRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -75,6 +80,8 @@ export class CanvasRenderer {
   private overlay: HTMLCanvasElement = document.createElement("canvas"); // transparent layer above the page: live stroke, selection, lasso
   private octx!: CanvasRenderingContext2D;
   private overlayDirty = false;
+  /** Text being typed right on the page: drawn live on the overlay (the box it replaces is hidden on the page meanwhile). */
+  private textDraft: TextDraft | null = null;
   private sceneValid = false;
   private frame = 0;                // pending requestAnimationFrame id (redraws are coalesced to one per frame)
   private frameFull = false;        // that frame must repaint the scene, not only the overlay
@@ -605,6 +612,51 @@ export class CanvasRenderer {
       if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) return t;
     }
     return null;
+  }
+
+  /** Show (or with null, remove) the text being typed in place. `x`,`y` is the text's top-left in world coordinates. */
+  public setTextDraft(d: TextDraft | null) {
+    const boxChanged = this.textDraft?.box !== d?.box;
+    this.textDraft = d;
+    if (boxChanged) this.render(); else this.touchOverlay();
+  }
+  public updateTextDraft(patch: Partial<TextDraft>) {
+    if (this.textDraft) { Object.assign(this.textDraft, patch); this.touchOverlay(); }
+  }
+  public blinkCaret() { if (this.textDraft) this.updateTextDraft({ caretOn: !this.textDraft.caretOn }); }
+  public touchOverlay() { this.overlayDirty = true; this.drawOverlay(); }
+  public textDraftRect(): { l: number; t: number; r: number; b: number } | null {
+    const d = this.textDraft;
+    if (!d) return null;
+    const m = this.measureText(d.text, d.size, d.bold, d.italic);
+    return { l: d.x - 4, t: d.y - 4, r: d.x + Math.max(m.width, d.size * 2) + 4, b: d.y + m.height + 4 };
+  }
+
+  private drawTextDraft(d: TextDraft) {
+    const ctx = this.ctx, fs = Math.max(16, d.size), lh = fs * 1.25, accent = "#3b82f6";
+    ctx.save();
+    ctx.font = this.textFont(d.size, d.bold, d.italic);
+    ctx.textBaseline = "top";
+    const lines = d.text.split("\n");
+    const w = Math.max(...lines.map((l) => ctx.measureText(l).width), fs * 2);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.5 / this.zoom;
+    ctx.setLineDash([6 / this.zoom, 4 / this.zoom]);
+    ctx.strokeRect(d.x - 4, d.y - 4, w + 8, lines.length * lh + 8);
+    ctx.fillStyle = this.eInkMode ? "#000000" : d.color;
+    lines.forEach((l, i) => ctx.fillText(l, d.x, d.y + i * lh));
+    if (d.caretOn) {
+      const before = d.text.slice(0, d.caret).split("\n");
+      ctx.fillStyle = accent;
+      ctx.fillRect(d.x + ctx.measureText(before[before.length - 1]).width, d.y + (before.length - 1) * lh, 2 / this.zoom, fs);
+    }
+    ctx.restore();
+  }
+
+  /** Top-left of a text box in world coordinates (box rects are tile-local). */
+  public textBoxOrigin(b: ParsedTextBox): { x: number; y: number } {
+    const t = b.tag ? this.doc?.tiles.get(b.tag) : null;
+    return { x: (t?.rect.left ?? 0) + b.rect.left, y: (t?.rect.top ?? 0) + b.rect.top };
   }
 
   public textBoxAt(x: number, y: number): ParsedTextBox | null {
@@ -1280,7 +1332,7 @@ export class CanvasRenderer {
     this.render();
   }
 
-  private isOnPage(x: number, y: number): boolean {
+  public isOnPage(x: number, y: number): boolean {
     for (const t of this.doc?.tiles.values() ?? []) {
       const r = t.pageRect ?? t.rect;
       if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) return true;
@@ -1462,7 +1514,7 @@ export class CanvasRenderer {
 
   /** What changes while the pen moves goes on the overlay: the stroke being drawn, a shape being dragged, the selection. */
   private drawOverlay() {
-    const live = this.currentStrokePoints.length > 0 || !!this.shapeFrom || this.selected.size > 0 || this.isLassoing;
+    const live = this.currentStrokePoints.length > 0 || !!this.shapeFrom || this.selected.size > 0 || this.isLassoing || !!this.textDraft;
     if (!live && !this.overlayDirty) return;
     const base = this.ctx, o = this.octx;
     this.ctx = o; // the drawing helpers paint into whichever context is current
@@ -1478,6 +1530,7 @@ export class CanvasRenderer {
       if (this.shapeFrom) { const st = this.shapeStroke(); if (st) this.drawStroke(st, false); }
       if (this.selected.size) this.renderSelectionOverlay();
       if (this.isLassoing) this.renderLassoPath();
+      if (this.textDraft) this.drawTextDraft(this.textDraft);
       o.restore();
     }
     this.ctx = base;
@@ -1583,6 +1636,7 @@ export class CanvasRenderer {
     // 1. Render Text Boxes (math is typeset; until it is ready, or if it can't be, the LaTeX source shows)
     if (tile.textBoxes && tile.textBoxes.length > 0) {
       for (const tb of tile.textBoxes) {
+        if (tb === this.textDraft?.box) continue; // being edited: shown live on the overlay
         if (isMathText(tb.text) && this.drawMath(tb)) continue;
         ctx.save();
         ctx.fillStyle = this.eInkMode ? "#000000" : tb.color;
