@@ -685,7 +685,7 @@ export class CanvasRenderer {
   }
 
   public textBoxAt(x: number, y: number): ParsedTextBox | null {
-    const pad = 6 / this.zoom;
+    const pad = 16 / this.zoom; // ~16 device px around a box: a finger or pen tap just outside still edits it
     let hit: ParsedTextBox | null = null;
     for (const t of this.doc?.tiles.values() ?? []) {
       for (const b of t.textBoxes ?? []) {
