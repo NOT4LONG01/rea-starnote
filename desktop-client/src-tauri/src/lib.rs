@@ -125,6 +125,7 @@ async fn loopback_wait(state: State<'_, Loopback>, timeout_secs: u64) -> Result<
         .map_err(|e| e.to_string())?
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(Loopback::default())

@@ -73,6 +73,13 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""):
 }
 
 function downloadBlob(blob: Blob, filename: string) {
+  const android = (window as any).StarNoteAndroid; // set by the Android app: its WebView ignores in-page downloads
+  if (android) {
+    const reader = new FileReader();
+    reader.onload = () => android.saveFile(filename, blob.type || "application/octet-stream", String(reader.result).split(",")[1] ?? ""); // opens "Save as"
+    reader.readAsDataURL(blob);
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
