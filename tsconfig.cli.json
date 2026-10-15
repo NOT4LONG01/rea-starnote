@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ],
+    "noEmit": true
+  },
+  "include": [
+    "src/cli",
+    "src/model",
+    "src/render/pdf-export.ts"
+  ],
+  "exclude": []
+}

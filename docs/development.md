@@ -8,11 +8,13 @@
 ## Everyday commands
 | Command | What it does |
 |---|---|
-| `npm run dev` | dev server at http://localhost:1420 (the Google OAuth client is registered for exactly that origin) |
-| `npm run typecheck` | `tsc --noEmit` (strict, no unused locals/params) |
+| `npm run dev` | dev server at http://localhost:1420: **development only**, the products are the desktop/Android apps (the Google OAuth client is registered for exactly that origin) |
+| `npm run typecheck` | `tsc --noEmit` for the app and for the CLI (`tsconfig.cli.json`, Node types) |
 | `npm test` | every `test/*.test.mjs`; `node test/run-all.mjs sync` runs one |
 | `npm run build` | typecheck + production bundle in `dist/` |
 | `npm run check` | all of the above; what CI runs |
+| `npm run build:cli` / `npm run cli -- <args>` | build and run the command line ([cli.md](cli.md)) |
+| `npm run test:e2e` | browser tests (need Chrome) |
 | `npm run tauri dev` / `npm run tauri build` | desktop app (`-- --no-bundle` for just the binary) |
 
 `test/pdf-export.test.mjs` needs `pdfinfo`, `pdftoppm`, `pdftotext` (poppler) and Python with Pillow; Ghostscript is optional.
@@ -26,12 +28,13 @@ the real modules; use the sample note in `public/samples/test.note` for format q
 |---|---|
 | `package.json` | dependencies, scripts, `engines` (minimum Node) |
 | `package-lock.json` | exact dependency versions: commit it, install with `npm ci` |
-| `tsconfig.json` | TypeScript strictness; `include: ["src"]` |
+| `tsconfig.json` | TypeScript strictness for the app (browser types; `src/cli` excluded) |
+| `tsconfig.cli.json` | typechecks `src/cli` and the model code it uses with Node types |
 | `vite.config.ts` | dev server (port 1420, fixed) and build target |
 | `.nvmrc` | the Node version everyone (and CI) uses |
 | `.editorconfig` | indentation, charset, final newline: editors apply it automatically |
 | `.gitattributes` | LF line endings in the repo (Windows checkouts too); marks binary files |
-| `.gitignore` | keeps dependencies, build output, keystores, `.env` and the proprietary APK out of git |
+| `.gitignore` | keeps dependencies, build output (`dist/`, `dist-cli/`), keystores, `.env` and the proprietary APK out of git |
 | `.github/workflows/ci.yml` | runs `npm run check` on every push and pull request |
 | `src-tauri/tauri.conf.json` | app name, window, identifier `com.starnote.interop` (do not change: it keys installed apps' data) |
 | `src-tauri/Cargo.toml`, `Cargo.lock` | Rust dependencies for the desktop/Android shell |
