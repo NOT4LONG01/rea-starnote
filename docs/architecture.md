@@ -16,6 +16,7 @@ understand survives a save.
 ## src/
 | Folder / file | Responsibility |
 |---|---|
+| `cli/main.ts` | the command line; bundled by `scripts/build-cli.mjs`, uses `model/` and `render/pdf-export.ts` only |
 | `main.ts` | the UI shell: library, editor tabs, toolbar and options, dialogs, text/LaTeX editor, sync runner, exports |
 | `model/note-loader.ts` | `.note` ZIP to `StarNoteDocument` (tiles, strokes, text boxes); detects page stacks vs free-form canvas |
 | `model/note-serializer.ts` | document to `.note`: appends new strokes and text boxes, deletes erased ones and removed pages; SVG export |
@@ -27,7 +28,7 @@ understand survives a save.
 | `data/library.ts`, `sync.ts` | the local note library (IndexedDB); the two-way Drive sync engine |
 | `integrations/google-drive.ts`, `zotero.ts`, `net.ts` | Google sign-in (web and desktop PKCE) and Drive REST; Zotero Web API; native-vs-browser `fetch` |
 
-Dependencies point one way: `main.ts` -> `render`, `data`, `integrations` -> `model`. `model/` has no UI code.
+Dependencies point one way: `main.ts` -> `render`, `data`, `integrations` -> `model`; `cli/` -> `model`. `model/` has no UI code, which is why the CLI can reuse it.
 
 ## Ideas worth knowing before changing things
 - **Strokes are tile-local.** A saved stroke's points are relative to its tile (`stroke.src` says where it lives in the

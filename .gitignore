@@ -29,3 +29,6 @@ chrome-*/
 .DS_Store
 .idea/
 .vscode/
+
+# command-line bundle
+dist-cli/
