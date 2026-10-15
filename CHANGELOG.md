@@ -4,6 +4,8 @@ Versions follow [SemVer](https://semver.org). Newest first.
 
 ## Unreleased
 ### Added
+- Page panel on the right of the editor: the page's format applied live (this page or all) and the page actions; an infinite canvas's sheet style.
+- The page rail lists the whole notebook, sections as headings.
 - **Sections view** (OneNote-like, a Grid / Sections switch per notebook): sub-notebooks as coloured tabs, a page list with drag-to-reorder, a page rail beside the editor, *Quick Notes* for notes outside notebooks, notebook and section colours. Page order and colours sync via Drive file properties.
 - **Notebooks**: folders in the library, made from the one *Create* dialog (type Pages / Infinite / Notebook), that hold notes and other notebooks (create, nest, *Move to…*, drag and drop, breadcrumbs, search across all, trash and restore with contents). On Drive each is a nested sub-folder of *StarNote*; renames, moves and deletes sync both ways.
 - Note types: an **Infinite** canvas (tiles appear wherever you write), chosen in the New note dialog; `rea-starnote new --kind infinite`.

@@ -566,3 +566,18 @@ span.crumb { color: var(--text); cursor: default; }
 @media (max-height: 520px) { .text-editor .te-bar { order: -1; } }
 /* the path stays on one line on a narrow screen and scrolls sideways */
 @media (max-width: 900px) { .lib-head h1 { flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; scrollbar-width: none; } }
+.page-rail .rail-group { margin: 10px 4px 2px; padding: 3px 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-left: 3px solid var(--c); }
+.page-rail .rail-empty { padding: 2px 14px 6px; font-size: 12px; color: var(--muted); }
+
+/* ---------- page panel (right): format of the page and page actions ---------- */
+.page-panel { position: absolute; z-index: 18; top: 0; right: 0; bottom: 0; width: min(300px, 42%); background: var(--bg-bar); border-left: 1px solid #4a4a4a;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35); padding: 10px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.page-panel .pp-head { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px; }
+.page-panel .pp-head span { flex: 1; }
+.page-panel .pp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
+.page-panel .pp-actions .btn { justify-content: center; }
+.page-panel .pp-actions .wide { grid-column: 1 / -1; }
+.page-panel .pp-note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+#btn-page-panel.on { color: var(--accent); }
+@media (max-width: 640px) { .page-panel { top: auto; left: 0; width: auto; max-height: 55%; border-left: 0; border-top: 1px solid #4a4a4a; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35); } }
+@media (max-height: 520px) { .page-panel { padding: 6px 10px; } .page-panel .pm-label { margin: 6px 0 3px; } }

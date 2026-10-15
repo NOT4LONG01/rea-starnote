@@ -17,8 +17,8 @@ open goes inside it. Move a note or notebook with *Move to…* in its menu, or d
 in the path. The search looks in every notebook. Trashing a notebook trashes what is inside it, and restoring brings it all back.
 **Sections view (like OneNote).** Inside a notebook, switch *Grid* to *Sections*: the notebook's sub-notebooks become coloured tabs
 (sections), and the open section lists its pages. *+ Section* and *+ Page* add one; drag a page up or down (or *Move up / down*
-in its menu) to set the order; a section's menu has *Colour…*. In the editor the *Pages* button opens a rail with the other
-pages of the section. *Quick Notes* in the sidebar lists the notes that are not in any notebook. Page order and colours sync.
+in its menu) to set the order; a section's menu has *Colour…*. In the editor the *Pages* button opens a rail with all the
+pages of the notebook, each section under its own heading. *Quick Notes* in the sidebar lists the notes that are not in any notebook. Page order and colours sync.
 
 On Google Drive each notebook is a sub-folder of the *StarNote* folder, nested the same way, and renames, moves and deletes
 are mirrored in both directions. Opened notes appear as tabs; the title at
@@ -31,6 +31,9 @@ the top lists them.
 - **Pen vs finger:** the stylus draws; fingers pan and pinch to zoom (the hand tool lets a finger drag the page).
 - **Lasso** selects strokes to move, recolor, copy and paste. **Text** boxes take plain text and LaTeX math (`$$...$$`).
 - **Pages:** the pages menu adds, deletes, moves pages and changes their format; the add-page button at the end adds one.
+- **Page panel** (the page-with-gear button, top right): the open page's paper, orientation, style and line spacing, applied
+  live to this page or all pages, and *+ Page after*, *+ Page at end*, *Move up / down*, *Delete page*. For an infinite
+  canvas it sets the style of the whole sheet.
 - **Undo/redo** works until the note is saved (autosave runs a few seconds after you stop); after that, earlier edits can't be undone.
 - **Fit** button: first tap fits the page height, the next the page width, and so on.
 - Notes **autosave** a few seconds after you stop. Saving is non-destructive: parts of a `.note` the app does not understand
