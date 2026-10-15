@@ -24,7 +24,7 @@ Commands:
   export <file.note>      convert:  --format svg | pdf | json   [-o <out>]   (-o - writes svg/json to stdout)
   new -o <file.note>      create a note: [--kind pages|infinite] [--title T]
                           [--paper a4|a5|a6|b5|letter|tablet|slide|square] [--landscape]
-                          [--template blank|ruled|grid|dots] [--spacing narrow|medium|wide] [--pages N]
+                          [--template blank|lined|grid|dotted] [--spacing narrow|medium|wide] [--pages N]
 
 Options:
   -h, --help              show this help          -v, --version   show the version
