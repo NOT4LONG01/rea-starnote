@@ -303,16 +303,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderLibrary();
   }
   /** A card or row: Ctrl/⌘-click or press-and-hold selects; while selecting, a tap selects instead of opening. Returns true when it handled the tap. */
+  let swallowClick = false; // a press-and-hold already selected: the click that follows the lift (on the re-rendered card) must not toggle it back
   function selectable(elx: HTMLElement, item: LibraryItem) {
-    let timer = 0, held = false;
+    let timer = 0;
     elx.addEventListener("pointerdown", (e) => {
+      swallowClick = false;
       if (e.pointerType !== "touch") return;
-      held = false;
-      timer = window.setTimeout(() => { held = true; toggleSelected(item); navigator.vibrate?.(15); }, 500);
+      timer = window.setTimeout(() => { swallowClick = true; toggleSelected(item); navigator.vibrate?.(15); }, 500);
     });
     for (const ev of ["pointerup", "pointercancel", "pointermove"]) elx.addEventListener(ev, (e) => { if (ev !== "pointermove" || Math.hypot((e as PointerEvent).movementX, (e as PointerEvent).movementY) > 4) clearTimeout(timer); });
     elx.addEventListener("click", (e) => {
-      if (held) { held = false; e.stopPropagation(); e.preventDefault(); return; } // the press-and-hold already selected it
+      if (swallowClick) { swallowClick = false; e.stopPropagation(); e.preventDefault(); return; } // the press-and-hold already selected it
       if (sel.on || e.ctrlKey || e.metaKey) { e.stopPropagation(); e.preventDefault(); toggleSelected(item); }
     }, true);
     if (sel.on) {
@@ -496,6 +497,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     scheduleSync();
     await refreshLibrary();
     renderEditorChrome();
+    renderTabs();
   }
 
   // ---------- notebooks (folders): create, open, move
@@ -1971,7 +1973,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { closePopover(); if (optionsOpen) { optionsOpen = false; renderToolOptions(); } setShown(modal, false); setShown($("zotero-modal"), false); if (!pmEl.classList.contains("hidden")) $("pm-cancel").click(); if (pageBrowserOpen()) closePageBrowser(); if (sel.on && !inEditor()) setSelecting(false); }
+    if (e.key === "Escape") { closePopover(); if (optionsOpen) { optionsOpen = false; renderToolOptions(); } setShown(modal, false); setShown($("zotero-modal"), false); if (!pmEl.classList.contains("hidden")) $("pm-cancel").click(); if (pageBrowserOpen()) closePageBrowser();
+      const mv = $("move-modal");
+      if (!mv.classList.contains("hidden") && !mv.classList.contains("leaving")) $("move-cancel").click(); // resolves the chooser as cancelled; the selection stays
+      else if (sel.on && !inEditor()) setSelecting(false); }
     if (!inEditor() || (e.target as HTMLElement).closest("input,textarea")) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? renderer.redo() : renderer.undo(); }

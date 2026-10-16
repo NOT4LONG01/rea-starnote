@@ -39,6 +39,8 @@
     ],
     "android": {
       "versionCode": 999800
-    }
+    },
+    "category": "Productivity",
+    "shortDescription": "Notes, notebooks and PDFs, compatible with StarNote files"
   }
 }
