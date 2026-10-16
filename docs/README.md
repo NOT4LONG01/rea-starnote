@@ -1,6 +1,6 @@
 # Documentation
 
-rea-starnote's products are the **Android, Windows and Linux apps** (with Google Drive and Zotero connectors) and the
+REA-StarNote's products are the **Android, Windows and Linux apps** (with Google Drive and Zotero connectors) and the
 **command line**. The browser version on localhost is a development tool only.
 
 ## Using it
