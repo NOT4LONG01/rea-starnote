@@ -83,5 +83,30 @@ ok(await ev(`document.getElementById('lib-title').textContent`) === "Quick Notes
 const quick = await ev(`[...document.querySelectorAll('#lib-grid .card:not(.create) .card-title span')].map(e => e.textContent).join(',')`);
 ok(quick === "Untitled note" && await ev(`document.getElementById('count-quick').textContent`) === "1", `it shows just the loose note, not the notebook's pages (${quick})`);
 
+// Grid with the Manual sort: drag a card to reorder (the same order as the Sections view)
+await click('.side-item[data-filter="all"]');
+await openNb("Physics");
+await click('#lib-view button[data-v="grid"]');
+// (a notebook opens on its first section in the Sections view, so the grid now shows Mechanics)
+ok(await ev(`[...document.querySelectorAll('#lib-title .crumb')].map(e => e.textContent).join(' > ')`) === "All notes > Physics > Mechanics", "in the Mechanics section, as a grid");
+await click("#btn-sort");
+await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Manual')).click()`); await sleep(500);
+const gridTitles = () => ev(`[...document.querySelectorAll('#lib-grid .card:not(.create) .card-title span')].map(e => e.textContent).join(',')`);
+ok(await gridTitles() === "Kinematics,Dynamics", `Manual sort shows the manual order (${await gridTitles()})`);
+await ev(`(() => {
+  const c = [...document.querySelectorAll('#lib-grid .card:not(.create)')];
+  const from = c.find(e => e.textContent.includes('Dynamics')), to = c.find(e => e.textContent.includes('Kinematics'));
+  const r = to.getBoundingClientRect(), dt = new DataTransfer();
+  const fire = (el, type) => el.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.x + 5, clientY: r.y + 40 }));
+  fire(from, 'dragstart'); fire(to, 'dragover'); fire(to, 'drop'); fire(from, 'dragend');
+})()`); await sleep(600);
+ok(await gridTitles() === "Dynamics,Kinematics", `dragging a card onto the left half of another puts it before (${await gridTitles()})`);
+await click('#lib-view button[data-v="sections"]');
+ok(await rows() === "Dynamics,Kinematics", "and the Sections page list shows the same order");
+await click('#lib-view button[data-v="grid"]');
+await ev(`[...document.querySelectorAll('#lib-grid .card:not(.create)')].find(e => e.textContent.includes('Dynamics')).querySelector('.card-title button').click()`); await sleep(300);
+await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.trim() === 'Move later').click()`); await sleep(600);
+ok(await gridTitles() === "Kinematics,Dynamics", "Move later in the card menu does it on touch");
+
 b.close();
 finish();

@@ -180,7 +180,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     filter: "all" as "all" | "quick" | "trash", // quick = notes that are in no notebook
     kind: "all" as "all" | "note" | "pdf",
     query: "",
-    sort: pref.get("sn.sort", "modified") as "modified" | "created" | "title",
+    sort: pref.get("sn.sort", "modified") as "modified" | "created" | "title" | "manual", // manual = the order you drag cards into
   };
 
   // ============================================================ popover
@@ -222,7 +222,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const here = ui.filter === "trash" ? visibleTrash(items) : ui.filter === "quick" ? live.filter((i) => !isFolder(i) && !liveParent(items, i) && (!q || i.title.toLowerCase().includes(q))) : q ? live.filter((i) => i.title.toLowerCase().includes(q)) : live.filter((i) => liveParent(items, i) === ui.folder); // an item whose notebook is gone or trashed shows at the top level; a search looks in every notebook
     return here
       .filter((i) => ui.kind === "all" || (!isFolder(i) && i.kind === ui.kind))
-      .sort((a, b) => Number(isFolder(b)) - Number(isFolder(a)) || (ui.sort === "title" ? a.title.localeCompare(b.title) : b[ui.sort] - a[ui.sort])); // notebooks first
+      .sort((a, b) => Number(isFolder(b)) - Number(isFolder(a)) || (ui.sort === "manual" ? byPlace(a, b) : ui.sort === "title" ? a.title.localeCompare(b.title) : b[ui.sort] - a[ui.sort])); // notebooks first
   }
 
   /** Cards rise in when you go somewhere else in the library (another notebook, section, filter or view), not on a refresh in place. */
@@ -280,9 +280,43 @@ document.addEventListener("DOMContentLoaded", async () => {
     hydrateIcons(grid);
   }
 
+  /** The notes the grid shows right now, in their manual order (what a drag in the grid reorders). */
+  const gridNotes = () => visibleItems().filter((i) => !isFolder(i));
+  /** Manual sort: drop a card on the left or right half of another to put it there (mouse and pen; touch uses the card menu). */
+  function gridReorder(c: HTMLElement, item: LibraryItem) {
+    const side = (e: DragEvent) => (e.clientX - c.getBoundingClientRect().left > c.offsetWidth / 2 ? "after" : "before");
+    c.addEventListener("dragover", (e) => {
+      const moving = gridNotes().find((x) => x.id === dragId);
+      if (!moving || moving.id === item.id) return;
+      e.preventDefault(); e.stopPropagation();
+      c.classList.toggle("drop-before", side(e) === "before");
+      c.classList.toggle("drop-after", side(e) === "after");
+    });
+    c.addEventListener("dragleave", () => c.classList.remove("drop-before", "drop-after"));
+    c.addEventListener("drop", (e) => {
+      c.classList.remove("drop-before", "drop-after");
+      const all = gridNotes(), moving = all.find((x) => x.id === dragId);
+      if (!moving || moving.id === item.id) return;
+      e.preventDefault(); e.stopPropagation();
+      dragId = null;
+      const rest = all.filter((x) => x.id !== moving.id);
+      void placePage(moving, all, rest.indexOf(item) + (side(e) === "after" ? 1 : 0));
+    });
+  }
+
+  /** Manual sort on touch: move a card one place earlier or later. */
+  function manualMoves(item: LibraryItem): HTMLElement[] {
+    if (ui.sort !== "manual" || ui.query) return [];
+    const list = gridNotes(), i = list.findIndex((x) => x.id === item.id), out: HTMLElement[] = [];
+    if (i > 0) out.push(popItem("Move earlier", "undo", () => void placePage(item, list, i - 1)));
+    if (i >= 0 && i < list.length - 1) out.push(popItem("Move later", "redo", () => void placePage(item, list, i + 1)));
+    return out;
+  }
+
   function card(item: LibraryItem): HTMLElement {
     const c = el("div", "card");
     if (!item.trashed) makeDraggable(c, item);
+    if (!item.trashed && ui.sort === "manual" && !ui.query) gridReorder(c, item);
     const thumb = el("button", "card-thumb");
     if (item.thumb) {
       const img = el("img");
@@ -318,6 +352,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           root.append(
             popItem("Open", "notes", () => openItem(item.id)),
             popItem("Rename", "pen", () => renameItem(item)),
+            ...manualMoves(item),
             popItem("Move to…", "folder", () => void moveItemTo(item)),
             popItem("Duplicate", "copy", () => duplicateItem(item)),
             popItem("Download .note", "download", () => downloadItem(item)),
@@ -1880,7 +1915,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("btn-sort").dataset.pop = "1";
   $("btn-sort").addEventListener("click", (e) => {
     openPopover(e.currentTarget as HTMLElement, (root) => {
-      for (const [key, label] of [["modified", "Last modified"], ["created", "Date created"], ["title", "Title (A–Z)"]] as const) {
+      for (const [key, label] of [["modified", "Last modified"], ["created", "Date created"], ["title", "Title (A–Z)"], ["manual", "Manual (drag to reorder)"]] as const) {
         root.appendChild(popItem(label, "sort", () => { ui.sort = key; pref.set("sn.sort", key); renderLibrary(); }, { checked: ui.sort === key }));
       }
     });
