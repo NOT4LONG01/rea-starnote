@@ -1838,7 +1838,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { closePopover(); if (optionsOpen) { optionsOpen = false; renderToolOptions(); } setShown(modal, false); setShown($("zotero-modal"), false); if (!pmEl.classList.contains("hidden")) $("pm-cancel").click(); }
+    if (e.key === "Escape") { closePopover(); if (optionsOpen) { optionsOpen = false; renderToolOptions(); } setShown(modal, false); setShown($("zotero-modal"), false); if (!pmEl.classList.contains("hidden")) $("pm-cancel").click(); if (pageBrowserOpen()) closePageBrowser(); }
     if (!inEditor() || (e.target as HTMLElement).closest("input,textarea")) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? renderer.redo() : renderer.undo(); }
