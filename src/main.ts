@@ -9,6 +9,7 @@ import { GoogleDriveService, GoogleDriveFile } from "./integrations/google-drive
 import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
 import { library, renderThumbnail, renderPageThumbnail, LibraryItem, InkIndex } from "./data/library";
 import { groupIntoLines, inkSignature, findIn, platformRecognizer, inkLanguage, Box } from "./integrations/handwriting";
+import * as handwriting from "./integrations/handwriting";
 import { isFolder, childrenOf, descendantsOf, pathOf, canMoveTo, noteCount, visibleTrash, liveParent, byPlace, orderAt, rootNotebookOf } from "./data/folders";
 import { isDesktopApp } from "./integrations/net";
 import { syncLibrary } from "./data/sync";
@@ -1733,7 +1734,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     if (todo.length) await library.putInk(id, idx).catch(() => undefined); // kept by the app (never in the .note), reused next time
     const read = Object.values(idx.pages).reduce((k, pg) => k + pg.lines.length, 0);
-    findStatus.textContent = read ? `Handwriting read (${lang === "ko" ? "한국어" : "English"}): ${read} line${read === 1 ? "" : "s"}` : "No handwriting on these pages.";
+    findStatus.textContent = (read ? `Handwriting read (${lang === "ko" ? "한국어" : "English"}): ${read} line${read === 1 ? "" : "s"}` : "No handwriting on these pages.") + (handwriting.lastRecognizerNote ? ` ${handwriting.lastRecognizerNote}` : "");
   }
   /** Finds the query in typed text and in the handwriting read so far; `jump` moves to the first hit. */
   function runFind(jump: boolean) {

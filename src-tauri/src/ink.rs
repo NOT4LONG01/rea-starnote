@@ -2,9 +2,17 @@
 //! languages whose handwriting feature Windows has installed. Lines of ink come in as point lists; one text (or None) per line
 //! goes back. Elsewhere the command answers "unavailable" and the app finds typed text only.
 
+/// What was read, and by which recognizer (`matched` is false when the asked language is not installed and Windows' default read it).
+#[derive(serde::Serialize)]
+pub struct InkRead {
+    texts: Vec<Option<String>>,
+    used: String,
+    matched: bool,
+}
+
 /// Lines of ink (each a list of strokes, each a list of [x, y]) and a language tag ("ko", "en").
 #[tauri::command]
-pub async fn ink_recognize(lines: Vec<Vec<Vec<[f32; 2]>>>, lang: String) -> Result<Vec<Option<String>>, String> {
+pub async fn ink_recognize(lines: Vec<Vec<Vec<[f32; 2]>>>, lang: String) -> Result<InkRead, String> {
     #[cfg(windows)]
     {
         tauri::async_runtime::spawn_blocking(move || win::recognize(&lines, &lang)).await.map_err(|e| e.to_string())?
@@ -37,7 +45,7 @@ mod win {
 
     fn msg(e: windows::core::Error) -> String { e.message().to_string() }
 
-    pub fn recognize(lines: &[Vec<Vec<[f32; 2]>>], lang: &str) -> Result<Vec<Option<String>>, String> {
+    pub fn recognize(lines: &[Vec<Vec<[f32; 2]>>], lang: &str) -> Result<super::InkRead, String> {
         unsafe { let _ = RoInitialize(RO_INIT_MULTITHREADED); } // this worker thread may not be set up for WinRT yet; "already" is fine
         let container = InkRecognizerContainer::new().map_err(msg)?;
         let all = container.GetRecognizers().map_err(msg)?;
@@ -49,9 +57,11 @@ mod win {
             return Err("unavailable: Windows has no handwriting recognizer installed (Settings > Time & language > Language > your language > Language options > Handwriting)".into());
         }
         // the language asked for when it is installed, else whatever Windows has (its default)
-        if let Some((r, _)) = named.iter().find(|(_, n)| super::name_hints(lang).iter().any(|h| n.contains(h))) {
+        let wanted = named.iter().find(|(_, n)| super::name_hints(lang).iter().any(|h| n.contains(h)));
+        if let Some((r, _)) = wanted {
             container.SetDefaultRecognizer(r).map_err(msg)?;
         }
+        let used = match wanted { Some((_, n)) => n.clone(), None => container.GetRecognizers().ok().and_then(|_| named.first().map(|(_, n)| n.clone())).unwrap_or_default() };
         let builder = InkStrokeBuilder::new().map_err(msg)?;
         let mut out = Vec::with_capacity(lines.len());
         for line in lines {
@@ -76,7 +86,7 @@ mod win {
             }
             out.push(if text.is_empty() { None } else { Some(text) });
         }
-        Ok(out)
+        Ok(super::InkRead { texts: out, used, matched: wanted.is_some() })
     }
 }
 

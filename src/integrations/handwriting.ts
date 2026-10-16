@@ -93,10 +93,17 @@ export function platformRecognizer(): Recognizer | null {
   if (w.__fakeInk) return w.__fakeInk;
   if (w.StarNoteAndroid?.recognizeInk) return androidRecognizer;
   if (isDesktopApp() && /Windows/i.test(navigator.userAgent)) {
-    return async (lines, lang) => nativeInvoke<(string | null)[]>("ink_recognize", { lines, lang });
+    return async (lines, lang) => {
+      const r = await nativeInvoke<{ texts: (string | null)[]; used: string; matched: boolean }>("ink_recognize", { lines, lang });
+      lastRecognizerNote = r.matched ? "" : `${lang === "ko" ? "Korean" : lang === "en" ? "English" : lang} handwriting isn't installed in Windows, so "${r.used}" read it. Add it in Settings > Time & language > Language > (the language) > Language options > Handwriting.`;
+      return r.texts;
+    };
   }
   return null;
 }
+
+/** Set when the last reading could not use the asked language (Windows read it with another recognizer): shown in the Find bar. */
+export let lastRecognizerNote = "";
 
 let nextReq = 1;
 const pending = new Map<number, { ok: (r: (string | null)[]) => void; fail: (e: Error) => void }>();
