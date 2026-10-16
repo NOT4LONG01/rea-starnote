@@ -4,6 +4,9 @@ Versions follow [SemVer](https://semver.org). Newest first.
 
 ## Unreleased
 ### Added
+- Grid view: a *Manual* sort (drag cards to reorder, or Move earlier / later), the same order as the Sections page list.
+- Clear sign-in errors (a missing or wrong client secret names the setting to fix).
+- Linux app: release build, `.deb` / `.rpm` / AppImage, smaller binary (stripped, LTO); qa/LINUX_QA_1.md.
 - Page browser: the page number opens a grid of the note's pages (jump, drag to reorder, add, delete).
 - Motion: panels, the page rail, menus, dialogs, the sidebar and messages slide or fade in and out; the view glides between pages; library cards rise in when you move to another notebook or section. All CSS, off with reduced-motion and in E-Ink mode.
 - On a notebook's own tab in the Sections view the add button makes a section (Notebook > Section > Pages).

@@ -12,7 +12,8 @@ Your notes are kept on the device. The library shows a grid with the tabs All / 
 
 ### Notebooks (folders)
 A **notebook** is a folder for notes. Create one from *Create* (or the folder button) with the type *Notebook*: it only asks for a name and opens the new notebook. Tap it to open it: the path
-at the top (All notes › Physics › Lab) takes you back up. Notebooks nest, and a note you create or import while a notebook is
+at the top (All notes › Physics › Lab) takes you back up. Sort > *Manual* lets you drag cards into your own order
+(the same order the Sections view uses). Notebooks nest, and a note you create or import while a notebook is
 open goes inside it. Move a note or notebook with *Move to…* in its menu, or drag its card onto a notebook card or onto a name
 in the path. The search looks in every notebook. Trashing a notebook trashes what is inside it, and restoring brings it all back.
 **Sections view (like OneNote).** Inside a notebook, switch *Grid* to *Sections*: the notebook's sub-notebooks become coloured tabs
