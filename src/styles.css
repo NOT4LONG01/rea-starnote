@@ -657,3 +657,6 @@ body.eink-mode *, body.eink-mode *::before, body.eink-mode *::after { animation:
 .sel-bar .sel-count { padding: 0 8px; font-weight: 600; }
 .sel-bar .btn { white-space: nowrap; }
 .ask-card { width: min(420px, 100%); }
+.ai-body { display: flex; flex-direction: column; gap: 6px; }
+.ai-body .pm-label { margin-top: 6px; }
+#ai-model { margin-bottom: 4px; }
