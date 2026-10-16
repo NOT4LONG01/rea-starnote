@@ -69,9 +69,11 @@ ok(await bar() === "" && !await ev(`document.querySelector('#lib-grid .card.sele
 // default view for all notebooks; a notebook's own choice is kept
 await click('#lib-title button.crumb');
 await notebook("NB2");
-await click("#btn-sort"); await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.trim() === 'Sections').click()`); await sleep(400);
+ok(!await ev(`document.getElementById('lib-view').classList.contains('hidden')`), "the Grid / Sections switch is on the top-level library too");
+await click('#lib-view button[data-v="sections"]'); // at the top level it sets the default for all notebooks
+ok(await ev(`localStorage.getItem('sn.view.default')`) === "sections", "and there it sets how every notebook opens");
 await ev(`${card("NB2")}.querySelector('.card-thumb').click()`); await sleep(500);
-ok(!await ev(`document.getElementById('lib-sections').classList.contains('hidden')`), "Sort > Notebooks open in Sections: a notebook opens in Sections");
+ok(!await ev(`document.getElementById('lib-sections').classList.contains('hidden')`), "a notebook then opens in Sections");
 await click('#lib-view button[data-v="grid"]'); // this one is set to Grid on its own
 await click('#lib-title button.crumb');
 await ev(`${card("NB")}.querySelector('.card-thumb').click()`); await sleep(500);
