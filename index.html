@@ -75,6 +75,14 @@
         </main>
       </section>
 
+      <div id="ask-modal" class="modal-overlay hidden">
+        <div class="modal-card pm-card ask-card" role="dialog" aria-labelledby="ask-title">
+          <div class="modal-header"><div class="modal-title"><h2 id="ask-title">Name</h2></div></div>
+          <div class="modal-body"><input id="ask-input" class="pm-name" type="text" maxlength="120" autocomplete="off" /></div>
+          <div class="pm-actions"><button id="ask-cancel" class="btn">Cancel</button><button id="ask-ok" class="btn btn-primary">OK</button></div>
+        </div>
+      </div>
+
       <div id="move-modal" class="modal-overlay hidden">
         <div class="modal-card pm-card">
           <div class="modal-header">

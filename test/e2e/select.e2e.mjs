@@ -14,7 +14,8 @@ const note = async (title) => {
   await click(".card.create .card-thumb"); await click('#pm-kind button[data-v="pages"]'); await click("#pm-ok"); await sleep(1100);
   const r = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse);
   await click("#tool-pen"); await drag([[r.x + 400, r.y + 300], [r.x + 500, r.y + 330]]);
-  await ev(`window.prompt = () => ${JSON.stringify(title)}`); await click("#btn-more"); await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Rename')).click()`); await sleep(400);
+  await click("#btn-more"); await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Rename')).click()`); await sleep(300);
+  await ev(`document.getElementById('ask-input').value = ${JSON.stringify(title)}; document.getElementById('ask-ok').click()`); await sleep(400);
   await click("#btn-back"); await sleep(800);
 };
 const notebook = async (name) => { await click(".card.create .card-thumb"); await click('#pm-kind button[data-v="notebook"]'); await ev(`document.getElementById('pm-name').value = ${JSON.stringify(name)}`); await click("#pm-ok"); await sleep(400); await click('#lib-title button.crumb'); };
