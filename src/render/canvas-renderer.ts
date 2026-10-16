@@ -317,6 +317,7 @@ export class CanvasRenderer {
   }
 
   private bindPointerEvents() {
+    this.canvas.addEventListener("pointerdown", () => { if (this.glide) { cancelAnimationFrame(this.glide); this.glide = 0; } }, true); // a touch takes over from a glide
     // Wheel zoom (Desktop)
     this.canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
@@ -929,6 +930,15 @@ export class CanvasRenderer {
   }
 
   /** Jump to the previous/next page, fitted to the screen width. */
+  /** Page `index` (reading order), fitted to the screen width. */
+  public showPage(index: number) {
+    const rects = this.pageRects();
+    const r = rects[Math.min(rects.length - 1, Math.max(0, index))];
+    if (r) this.fit("width", r);
+  }
+  /** The page tiles in reading order (a stack's pages), for the page browser. */
+  public pageTiles(): ParsedTile[] { return this.isStack() ? this.stackTiles() : []; }
+
   public gotoPage(delta: number) {
     const rects = this.pageRects();
     const i = Math.min(rects.length - 1, Math.max(0, this.pageInfo().index + delta));
@@ -942,13 +952,40 @@ export class CanvasRenderer {
     const w = r.right - r.left, h = r.bottom - r.top;
     const padX = mode === "width" ? 0 : pad; // width fit is flush, like paper filling the screen
     const zx = (this.canvas.width - 2 * padX) / w, zy = (this.canvas.height - 2 * pad) / h;
-    this.zoom = Math.min(3.0, Math.max(0.05, mode === "width" ? zx : mode === "height" ? zy : Math.min(zx, zy)));
-    this.panX = (this.canvas.width - w * this.zoom) / 2 - r.left * this.zoom; // centred horizontally
-    this.panY = mode === "width"
-      ? pad - r.top * this.zoom                                                // top of the page, then scroll down
-      : (this.canvas.height - h * this.zoom) / 2 - r.top * this.zoom;
+    const zoom = Math.min(3.0, Math.max(0.05, mode === "width" ? zx : mode === "height" ? zy : Math.min(zx, zy)));
+    const panX = (this.canvas.width - w * zoom) / 2 - r.left * zoom; // centred horizontally
+    const panY = mode === "width"
+      ? pad - r.top * zoom                                           // top of the page, then scroll down
+      : (this.canvas.height - h * zoom) / 2 - r.top * zoom;
+    if (Math.abs(zoom - this.zoom) < 1e-6 && this.glideTo(panX, panY)) return; // same zoom: glide there
+    this.glide = 0;
+    this.zoom = zoom; this.panX = panX; this.panY = panY;
     this.render();
     this.notifyZoom();
+  }
+
+  private glide = 0; // the running page-to-page glide (a frame request id), 0 when none
+  /**
+   * Moves the view to (panX, panY) over ~260 ms at the same zoom: each frame only slides the cached page (cheap).
+   * Returns false when it should just jump (no motion wanted, nothing on screen yet, or a tiny move).
+   */
+  private glideTo(panX: number, panY: number): boolean {
+    const still = this.eInkMode || matchMedia("(prefers-reduced-motion: reduce)").matches || this.canvas.width === 0 || !this.sceneValid;
+    const x0 = this.panX, y0 = this.panY, dist = Math.hypot(panX - x0, panY - y0);
+    if (still || dist < 4) return false;
+    const t0 = performance.now(), ms = Math.min(360, 180 + dist / 20);
+    const step = (now: number) => {
+      if (!this.glide) return; // cancelled by another jump, a pinch or a drag
+      const t = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - t, 3); // ease-out
+      this.panX = x0 + (panX - x0) * e;
+      this.panY = y0 + (panY - y0) * e;
+      this.draw();
+      if (t < 1) this.glide = requestAnimationFrame(step);
+      else { this.glide = 0; this.panX = panX; this.panY = panY; this.render(); this.notifyZoom(); }
+    };
+    cancelAnimationFrame(this.glide);
+    this.glide = requestAnimationFrame(step);
+    return true;
   }
 
   // ------------------------------------------------------------ pages (a stack of finite pages)

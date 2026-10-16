@@ -31,6 +31,8 @@ the top lists them.
 - **Pen vs finger:** the stylus draws; fingers pan and pinch to zoom (the hand tool lets a finger drag the page).
 - **Lasso** selects strokes to move, recolor, copy and paste. **Text** boxes take plain text and LaTeX math (`$$...$$`).
 - **Pages:** the pages menu adds, deletes, moves pages and changes their format; the add-page button at the end adds one.
+- **Page browser:** tap the page number ("2 / 3") to see every page as a thumbnail: tap one to go there, drag to reorder,
+  ⋯ for move / add after / delete.
 - **Page panel** (the page-with-gear button, top right): the open page's paper, orientation, style and line spacing, applied
   live to this page or all pages, and *+ Page after*, *+ Page at end*, *Move up / down*, *Delete page*. For an infinite
   canvas it sets the style of the whole sheet.

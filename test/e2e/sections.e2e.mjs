@@ -57,7 +57,8 @@ const backed = await ev(`window.__reaBack()`); await sleep(800); // leaving save
 ok(backed === true && await ev(`document.getElementById('view-editor').classList.contains('hidden')`), "Back in the editor returns to the library");
 ok(await ev(`[...document.querySelectorAll('#lib-title .crumb')].map(e => e.textContent).join(' > ')`) === "All notes > Physics > Mechanics", "to the section it came from");
 await click("#lib-sections .sec-tab.active .sec-menu");
-ok(await ev(`window.__reaBack()`) === true && await ev(`document.getElementById('popover').classList.contains('hidden')`), "Back closes an open menu first");
+const closed = await ev(`window.__reaBack()`); await sleep(300); // the menu plays its closing motion first
+ok(closed === true && await ev(`document.getElementById('popover').classList.contains('hidden')`), "Back closes an open menu first");
 ok(await ev(`window.__reaBack()`) === true && await ev(`document.getElementById('lib-title').textContent`) === "All notes", "then leaves the notebook (not just the section)");
 ok(await ev(`window.__reaBack()`) === false, "at the top level Back is left to Android (the app closes)");
 await openNb("Physics");

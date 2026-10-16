@@ -130,6 +130,10 @@
           <canvas id="note-canvas"></canvas>
           <aside id="page-rail" class="page-rail hidden" aria-label="Pages"></aside>
           <aside id="page-panel" class="page-panel hidden" aria-label="Page settings"></aside>
+          <div id="page-browser" class="page-browser hidden" role="dialog" aria-label="Pages of this note">
+            <div class="pb-head"><span id="pb-title">Pages</span><button id="pb-close" class="icon-btn" title="Close"><i data-icon="close"></i></button></div>
+            <div id="pb-grid" class="pb-grid"></div>
+          </div>
           <textarea id="text-ghost" class="text-ghost" aria-label="Text" tabindex="-1" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
           <div id="text-editor" class="text-editor hidden" role="dialog" aria-label="Math (LaTeX)">
             <div class="te-head"><b>Math</b><span class="te-sub">LaTeX source; the formula is typeset on the page</span></div>

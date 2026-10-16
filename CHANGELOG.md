@@ -4,6 +4,9 @@ Versions follow [SemVer](https://semver.org). Newest first.
 
 ## Unreleased
 ### Added
+- Page browser: the page number opens a grid of the note's pages (jump, drag to reorder, add, delete).
+- Motion: panels, the page rail, menus, dialogs, the sidebar and messages slide or fade in and out; the view glides between pages; library cards rise in when you move to another notebook or section. All CSS, off with reduced-motion and in E-Ink mode.
+- On a notebook's own tab in the Sections view the add button makes a section (Notebook > Section > Pages).
 - Page panel on the right of the editor: the page's format applied live (this page or all) and the page actions; an infinite canvas's sheet style.
 - The page rail lists the whole notebook, sections as headings.
 - **Sections view** (OneNote-like, a Grid / Sections switch per notebook): sub-notebooks as coloured tabs, a page list with drag-to-reorder, a page rail beside the editor, *Quick Notes* for notes outside notebooks, notebook and section colours. Page order and colours sync via Drive file properties.
