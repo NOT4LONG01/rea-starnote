@@ -24,3 +24,10 @@ byteorder = "1.5"
 log = "0.4"
 env_logger = "0.11"
 
+
+# a smaller, leaner app: no debug symbols, whole-program optimisation (the Rust side is small; speed is the webview's)
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
