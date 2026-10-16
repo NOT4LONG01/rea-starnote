@@ -13,6 +13,13 @@ Recognized text is kept by the app, never written into the `.note`. Built on the
 the Windows recognizer (type-checked for Windows), the Android bridge (builds), the stored index, the Find bar (e2e test with a
 stand-in recognizer). Next: QA on Windows (the owner's PC has the Korean recognizer) and on the phone, then merge into `main`.
 
+## Later: OneNote ink importer
+Turn existing OneNote notes into REA-StarNote notes with their ink as real strokes (so handwriting search and the assistant can
+read them). PDF exports cannot be used: OneNote flattens ink into filled outlines there, without stroke order. OneNote keeps the
+original ink; on Windows its COM API gives a page's XML with the ink data, which Windows can load with its points. Plan: a
+Windows-only import (or a CLI step) that reads a section's pages and writes `.note` notes (pages with strokes and typed text),
+tested on copies of the owner's sample sections, which stay private (never in the repo).
+
 ## 1.1.1: AI assistant for students and researchers
 An assistant that sees what you wrote and helps with it, through the AI provider *you* connect.
 
