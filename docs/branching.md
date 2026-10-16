@@ -36,7 +36,9 @@ Semantic Versioning: `MAJOR.MINOR.PATCH`, pre-releases `1.0.0-beta.N`. The versi
 - **Android version code** must grow with every build people install, or the phone refuses the update. Tauri derives it
   from the version (`1.0.0` -> 1000000, `1.0.1` -> 1000001) and ignores `-beta.N`, so betas set it explicitly in
   `tauri.conf.json` (`bundle.android.versionCode`): `999900 + N` for `1.0.0-beta.N`. Remove that line for `1.0.0` itself.
-- After 1.0.0 ships, `main` moves to `1.1.0-dev` when the first 1.1 feature lands.
+- Once `main` has work the release branch doesn't (the first 1.1 feature), `main` is `1.1.0-dev`, so a test build says what it is.
+  Its Android version code stays below every 1.0 build (`999800`), so a phone can always update from a dev build to the next 1.0 beta
+  or release. When 1.0.0 ships and 1.1 work starts for real, `main` drops the explicit code (1.1.0 -> 1001000).
 
 ## QA bundles
 Built from tracked files only (`git archive`) into `artifacts/rea-starnote-qa-N.zip`, with a matching `qa/RETEST_N.md`. A beta
