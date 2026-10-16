@@ -7,7 +7,7 @@ import { loadStarNoteArchive, StarNoteDocument, ParsedTextBox } from "./model/no
 import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serializer";
 import { GoogleDriveService, GoogleDriveFile } from "./integrations/google-drive";
 import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
-import { library, renderThumbnail, LibraryItem } from "./data/library";
+import { library, renderThumbnail, renderPageThumbnail, LibraryItem } from "./data/library";
 import { isFolder, childrenOf, descendantsOf, pathOf, canMoveTo, noteCount, visibleTrash, liveParent, byPlace, orderAt, rootNotebookOf } from "./data/folders";
 import { isDesktopApp } from "./integrations/net";
 import { syncLibrary } from "./data/sync";
@@ -68,6 +68,36 @@ function hydrateIcons(root: ParentNode = document) {
 }
 
 // ---------------------------------------------------------------- helpers
+/**
+ * Shows or hides a bar, panel, menu or dialog with its motion (the CSS keyframes per element in styles.css): it appears
+ * with its "in" animation, and on hiding plays "out" before it is really hidden. No motion with reduced-motion or E-Ink.
+ * `onHidden` runs once it is gone (not if it is shown again first).
+ */
+const leaving = new WeakMap<HTMLElement, () => void>();
+function setShown(el: HTMLElement, show: boolean, onHidden?: () => void) {
+  if (show) {
+    const pending = leaving.get(el);
+    if (pending) { leaving.delete(el); el.classList.remove("leaving"); el.removeEventListener("animationend", pending); }
+    el.classList.remove("hidden");
+    return;
+  }
+  if (el.classList.contains("hidden") || leaving.has(el)) return;
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches || document.body.classList.contains("eink-mode") || !el.isConnected;
+  if (still) { el.classList.add("hidden"); onHidden?.(); return; }
+  const done = () => {
+    if (leaving.get(el) !== done) return;
+    leaving.delete(el);
+    el.removeEventListener("animationend", done);
+    el.classList.remove("leaving");
+    el.classList.add("hidden");
+    onHidden?.();
+  };
+  leaving.set(el, done);
+  el.addEventListener("animationend", done);
+  setTimeout(done, 260); // in case no animation runs (e.g. the element has none)
+  el.classList.add("leaving");
+}
+
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""): HTMLElementTagNameMap[K] {
@@ -99,11 +129,7 @@ function showToast(message: string, type: "success" | "error" | "info" = "info")
   const container = $("toast-container");
   const toast = el("div", `toast ${type}`, message);
   container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transition = "opacity 0.3s";
-    setTimeout(() => toast.remove(), 300);
-  }, 3200);
+  setTimeout(() => setShown(toast, false, () => toast.remove()), 3200); // slides back out to the edge
 }
 
 function debounce(fn: (...args: any[]) => void, delay: number) {
@@ -157,12 +183,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ============================================================ popover
   const pop = $("popover");
-  function closePopover() { pop.classList.add("hidden"); pop.innerHTML = ""; }
+  function closePopover() { setShown(pop, false, () => { pop.innerHTML = ""; }); }
   function openPopover(anchor: HTMLElement, fill: (root: HTMLElement) => void) {
     pop.innerHTML = "";
     fill(pop);
     hydrateIcons(pop);
-    pop.classList.remove("hidden");
+    setShown(pop, true);
     const r = anchor.getBoundingClientRect();
     const w = pop.offsetWidth, h = pop.offsetHeight;
     const left = r.left + w > window.innerWidth - 8 ? r.right - w : r.left; // open rightwards unless it would overflow
@@ -197,6 +223,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       .sort((a, b) => Number(isFolder(b)) - Number(isFolder(a)) || (ui.sort === "title" ? a.title.localeCompare(b.title) : b[ui.sort] - a[ui.sort])); // notebooks first
   }
 
+  /** Cards rise in when you go somewhere else in the library (another notebook, section, filter or view), not on a refresh in place. */
+  let lastPlace = "";
+  function enterIfMoved(box: HTMLElement) {
+    const ctx = sectionsCtx();
+    const place = [ui.filter, ui.folder, ui.kind, ui.query ? "q" : "", ctx ? viewOf(ctx.nb.id) : ""].join("|");
+    box.classList.toggle("enter", place !== lastPlace);
+    lastPlace = place;
+  }
+
   function renderLibrary() {
     if (ui.folder && !items.some((i) => i.id === ui.folder && isFolder(i) && !i.trashed)) ui.folder = null; // the notebook is gone (deleted or synced away)
     $("count-all").textContent = String(items.filter((i) => !i.trashed && !isFolder(i)).length);
@@ -220,6 +255,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const grid = $("lib-grid");
     grid.innerHTML = "";
+    enterIfMoved(grid);
 
     if (ui.filter !== "trash") {
       const create = el("div", "card create");
@@ -236,6 +272,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const list = visibleItems();
     for (const item of list) grid.appendChild(isFolder(item) ? folderCard(item) : card(item));
+    [...grid.children].forEach((c, i) => (c as HTMLElement).style.setProperty("--i", String(Math.min(i, 12))));
     if (list.length === 0 && ui.filter === "trash") grid.appendChild(el("div", "empty-state", "Trash is empty."));
     if (list.length === 0 && ui.filter === "all" && (ui.query || ui.kind !== "all")) grid.appendChild(el("div", "empty-state", "No notes match."));
     hydrateIcons(grid);
@@ -372,7 +409,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const modal = $("move-modal"), list = $("move-list");
       $("move-title").textContent = title;
       list.innerHTML = "";
-      const done = (v: string | null | undefined) => { modal.classList.add("hidden"); resolve(v); };
+      const done = (v: string | null | undefined) => { setShown(modal, false); resolve(v); };
       const row = (label: string, id: string | null, depth: number) => {
         const b = el("button");
         b.style.paddingLeft = `${12 + depth * 18}px`;
@@ -389,7 +426,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       walk(null, 1);
       hydrateIcons(list);
       $("move-cancel").onclick = $("move-close").onclick = () => done(undefined);
-      modal.classList.remove("hidden");
+      setShown(modal, true);
     });
   }
   /** Dragging a card onto a notebook card or a breadcrumb moves it there (mouse and pen; on touch use "Move to…"). */
@@ -557,6 +594,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function renderSections(nb: LibraryItem) {
     const box = $("lib-sections");
     box.innerHTML = "";
+    enterIfMoved(box);
     const sections = liveIn(nb.id).filter(isFolder).sort(byPlace);
     const loose = () => liveIn(nb.id).filter((i) => !isFolder(i));
     const hasOwn = loose().length > 0 || sections.length === 0; // the notebook's own pages get a tab of their own
@@ -625,9 +663,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       list.appendChild(r);
     }
     if (!list.children.length) list.appendChild(el("div", "empty-state", "No pages yet."));
-    const newPage = el("button", "btn page-add", "+ Page");
-    newPage.addEventListener("click", () => newNote(lastFormat(), "pages")); // straight in, in the last page format, like OneNote; a page is always a Pages note
+    // Notebook > Section > Pages: in a section you add pages, on the notebook's own tab you add a section
+    const atTop = current === nb.id;
+    const newPage = el("button", "btn page-add", atTop ? "+ Section" : "+ Page");
+    newPage.addEventListener("click", () => (atTop ? void createNote("notebook", nb.id) : newNote(lastFormat(), "pages"))); // a page: straight in, in the last page format, like OneNote
     box.append(list, newPage);
+    [...list.children].forEach((c, i) => (c as HTMLElement).style.setProperty("--i", String(Math.min(i, 12))));
     hydrateIcons(box);
   }
 
@@ -639,7 +680,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const parent = active && active.item.parentId ? items.find((i) => i.id === active!.item.parentId && isFolder(i) && !i.trashed) : undefined;
     btn.classList.toggle("hidden", !parent);
     btn.classList.toggle("on", !!parent && railOn());
-    rail.classList.toggle("hidden", !parent || !railOn());
+    setShown(rail, !!parent && railOn());
     if (!parent || !railOn()) return;
     // the whole notebook: its own pages first, then each section (and deeper notebook) as a heading with its pages
     const nb = rootNotebookOf(items, parent.id).root ?? parent;
@@ -679,10 +720,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       if (depth > 0 && !pages.length) list.appendChild(el("div", "rail-empty", "No pages"));
     }
-    const add = el("button", "btn btn-sm rail-add", "+ Page");
-    add.title = `New page in ${parent.title}`;
-    add.addEventListener("click", () => { ui.folder = parent.id; newNote(lastFormat(), "pages"); });
-    rail.append(head, list, add);
+    rail.append(head, list);
+    if (parent.id !== nb.id || viewOf(nb.id) !== "sections") { // in the sections view pages belong in sections, not on the notebook itself
+      const add = el("button", "btn btn-sm rail-add", "+ Page");
+      add.title = `New page in ${parent.title}`;
+      add.addEventListener("click", () => { ui.folder = parent.id; newNote(lastFormat(), "pages"); });
+      rail.append(add);
+    }
     hydrateIcons(rail);
   }
 
@@ -930,11 +974,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderPagePanel();
   }
 
+  const seenTabs = new Set<string>(); // tabs already shown: only a newly opened one animates
   function renderTabs() {
     const wrap = $("tabs");
     wrap.innerHTML = "";
     for (const s of sessions) {
-      const t = el("div", `tab${s === active ? " active" : ""}`);
+      const t = el("div", `tab${s === active ? " active" : ""}${seenTabs.has(s.item.id) ? "" : " enter"}`);
+      seenTabs.add(s.item.id);
       if (isDirty(s)) t.appendChild(el("i", "tab-dirty"));
       t.appendChild(el("span", "", s.item.title));
       const x = el("button");
@@ -1105,7 +1151,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     optBox.innerHTML = "";
     const colorsWanted = sel || tool === "pen" || tool === "shape" || tool === "text";
     const open = sel || (optionsOpen && (colorsWanted || tool === "eraser"));
-    optBox.classList.toggle("hidden", !open);
+    setShown(optBox, open);
     if (!open) return;
     if (sel) group().appendChild(el("span", "opt-label", "Selection: pick a color or size to change it"));
     if (!sel && tool === "pen") {
@@ -1328,7 +1374,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       }
       const done = (v: { format: PageFormat; all: boolean; kind: NewKind; name: string } | null) => {
-        pmEl.classList.add("hidden");
+        setShown(pmEl, false);
         $("pm-ok").onclick = $("pm-cancel").onclick = $("pm-close").onclick = null;
         resolve(v);
       };
@@ -1338,7 +1384,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       $("pm-ok").onclick = () => done({ format: fmt(), all: st.scope === "all", kind: st.kind as NewKind, name: nameBox.value.trim() });
       $("pm-cancel").onclick = $("pm-close").onclick = () => done(null);
       paint();
-      pmEl.classList.remove("hidden");
+      setShown(pmEl, true);
       if (st.kind === "notebook") setTimeout(() => $("pm-name").focus(), 50);
     });
   }
@@ -1354,39 +1400,78 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ---------- pages: add / delete / move / format
-  const currentPage = () => renderer.pageInfo().index;
   function addNewPage(after: number) {
     const ref = renderer.pageFormatAt(after) ?? lastFormat();
     renderer.addPage({ w: ref.w, h: ref.h, template: ref.template, spacing: ref.spacing }, after); // the new page looks like its neighbour, line spacing included
   }
   $("add-page-pill").addEventListener("click", () => addNewPage(renderer.pageInfo().total - 1));
-  $("page-here").addEventListener("click", (e) => {
-    if (!renderer.isStack()) { renderer.fit("width"); return; }
-    const anchor = e.currentTarget as HTMLElement, i = currentPage(), total = renderer.pageInfo().total;
-    openPopover(anchor, (root) => {
-      root.append(el("div", "pop-title", `Page ${i + 1} of ${total}`));
-      root.appendChild(popItem("Fit page width", "fitw", () => { closePopover(); renderer.fit("width"); }));
-      root.appendChild(popItem("Add page after this one", "plus", () => { closePopover(); addNewPage(i); }));
-      root.appendChild(popItem("Add page at the end", "plus", () => { closePopover(); addNewPage(total - 1); }));
-      root.appendChild(popItem("Page format…", "sliders", async () => {
-        closePopover();
-        const cur = renderer.pageFormatAt(i)!;
-        const r = await askPageFormat({ title: "Page format", ok: "Apply", initial: cur, scope: true, sizeLocked: renderer.hasBackgroundAt(i) });
-        if (!r) return;
-        const idx = r.all ? [...Array(total).keys()] : [i];
-        renderer.setPageFormat(idx, { w: r.format.w, h: r.format.h, template: r.format.template, spacing: r.format.spacing });
-        pref.set("sn.format", JSON.stringify(r.format));
-      }));
-      if (i > 0) root.appendChild(popItem("Move page up", "chevron", () => { closePopover(); renderer.movePage(i, -1); }));
-      if (i < total - 1) root.appendChild(popItem("Move page down", "chevron", () => { closePopover(); renderer.movePage(i, 1); }));
-      root.appendChild(el("div", "pop-sep"));
-      root.appendChild(popItem("Delete page", "trash", () => {
-        closePopover();
-        if (total <= 1) { showToast("A note needs at least one page.", "info"); return; }
-        if (confirm(`Delete page ${i + 1}?\n\nIts drawings and text are removed from the note. This can't be undone.`)) renderer.deletePage(i);
-      }, { danger: true }));
-    });
+  // ---------- page browser: tap the page number ("2 / 3") to see every page of the note; tap one to go there, drag to reorder
+  $("page-here").addEventListener("click", () => {
+    if (!renderer.isStack()) { renderer.fit("width"); return; } // a free-form canvas has no pages to browse
+    openPageBrowser();
   });
+  $("pb-close").addEventListener("click", () => closePageBrowser());
+  let pbFrom = -1;
+  function openPageBrowser() { renderPageBrowser(); setShown($("page-browser"), true); }
+  function closePageBrowser() { setShown($("page-browser"), false); }
+  const pageBrowserOpen = () => !$("page-browser").classList.contains("hidden") && !$("page-browser").classList.contains("leaving");
+  function renderPageBrowser() {
+    const grid = $("pb-grid"), tiles = renderer.pageTiles(), cur = renderer.pageInfo().index, total = tiles.length;
+    $("pb-title").textContent = `${active?.item.title ?? "Note"} · ${total} page${total === 1 ? "" : "s"}`;
+    grid.innerHTML = "";
+    const extra = renderer.getUserStrokes();
+    tiles.forEach((t, i) => {
+      const card = el("div", `pb-card${i === cur ? " current" : ""}`);
+      const img = el("img");
+      img.src = renderPageThumbnail(t, 180, extra);
+      img.alt = `Page ${i + 1}`;
+      img.draggable = false;
+      const num = el("div", "pb-num");
+      num.appendChild(el("span", "", String(i + 1)));
+      const menu = el("button");
+      menu.dataset.pop = "1";
+      menu.title = "Page actions";
+      menu.innerHTML = '<i data-icon="more"></i>';
+      menu.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openPopover(menu, (root) => {
+          root.append(el("div", "pop-title", `Page ${i + 1} of ${total}`));
+          if (i > 0) root.append(popItem("Move up", "undo", () => { renderer.movePage(i, -1); renderPageBrowser(); }));
+          if (i < total - 1) root.append(popItem("Move down", "redo", () => { renderer.movePage(i, 1); renderPageBrowser(); }));
+          root.append(popItem("Add page after", "plus", () => { addNewPage(i); renderPageBrowser(); }));
+          if (total > 1) root.append(popItem("Delete page", "trash", () => {
+            if (confirm(`Delete page ${i + 1}?\n\nIts drawings and text are removed from the note. This can't be undone.`)) { renderer.deletePage(i); renderPageBrowser(); }
+          }, { danger: true }));
+        });
+      });
+      num.appendChild(menu);
+      card.append(img, num);
+      card.addEventListener("click", () => { closePageBrowser(); renderer.showPage(i); });
+      // drag a page onto another to put it there (mouse and pen; on touch use the ⋯ menu)
+      card.draggable = true;
+      card.addEventListener("dragstart", (e) => { pbFrom = i; e.dataTransfer?.setData("text/x-starnote-page", String(i)); });
+      card.addEventListener("dragend", () => { pbFrom = -1; });
+      const after = (e: DragEvent) => e.clientX - card.getBoundingClientRect().left > card.offsetWidth / 2;
+      card.addEventListener("dragover", (e) => { if (pbFrom < 0 || pbFrom === i) return; e.preventDefault(); card.classList.toggle("drop-after", after(e)); card.classList.toggle("drop-before", !after(e)); });
+      card.addEventListener("dragleave", () => card.classList.remove("drop-before", "drop-after"));
+      card.addEventListener("drop", (e) => {
+        card.classList.remove("drop-before", "drop-after");
+        if (pbFrom < 0 || pbFrom === i) return;
+        e.preventDefault();
+        let to = i + (after(e) ? 1 : 0);
+        if (pbFrom < to) to--; // the page leaves its old place first
+        if (to !== pbFrom) renderer.movePage(pbFrom, to - pbFrom);
+        pbFrom = -1;
+        renderPageBrowser();
+      });
+      card.style.setProperty("--i", String(Math.min(i, 12)));
+      grid.appendChild(card);
+    });
+    const add = el("button", "pb-add", "+ Page at end");
+    add.addEventListener("click", () => { addNewPage(total - 1); renderPageBrowser(); });
+    grid.appendChild(add);
+    hydrateIcons(grid);
+  }
 
   // ---------- page panel (right): the page's format, live, and the page actions; toggled from the top bar
   const panelOn = () => pref.get("sn.pagepanel", "0") === "1";
@@ -1395,7 +1480,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function renderPagePanel() {
     const box = $("page-panel");
     $("btn-page-panel").classList.toggle("on", panelOn());
-    box.classList.toggle("hidden", !panelOn() || !inEditor());
+    setShown(box, panelOn() && inEditor());
     if (!panelOn() || !inEditor()) return;
     box.innerHTML = "";
     const head = el("div", "pp-head");
@@ -1488,7 +1573,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     te.snips.appendChild(b);
   }
   function closeTextEditor() {
-    te.open = false; te.el.classList.add("hidden"); te.box = null; te.seq++;
+    te.open = false; setShown(te.el, false); te.box = null; te.seq++;
     renderer.setTextDraft(null);
   }
   /** Typeset the source and show it on the page; an error keeps the last good picture and is written under the code. */
@@ -1520,7 +1605,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     te.input.value = b ? latexOf(b.text) : "";
     te.error.classList.add("hidden");
     $("te-delete").classList.toggle("hidden", !b);
-    te.el.classList.remove("hidden");
+    setShown(te.el, true);
     const o = b ? renderer.textBoxOrigin(b) : te.at;
     renderer.setTextDraft({ x: o.x, y: o.y, box: b, text: "", caret: 0, caretOn: false, size: te.size, bold: false, italic: false, color: te.color, math: { img: null, w: te.size * 2, h: te.size } });
     const panel = te.el.getBoundingClientRect(), bottomSheet = te.el.offsetWidth >= $("canvas-container").clientWidth - 2;
@@ -1716,7 +1801,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { closePopover(); if (optionsOpen) { optionsOpen = false; renderToolOptions(); } modal.classList.add("hidden"); $("zotero-modal").classList.add("hidden"); if (!pmEl.classList.contains("hidden")) $("pm-cancel").click(); }
+    if (e.key === "Escape") { closePopover(); if (optionsOpen) { optionsOpen = false; renderToolOptions(); } setShown(modal, false); setShown($("zotero-modal"), false); if (!pmEl.classList.contains("hidden")) $("pm-cancel").click(); }
     if (!inEditor() || (e.target as HTMLElement).closest("input,textarea")) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? renderer.redo() : renderer.undo(); }
@@ -1763,7 +1848,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ============================================================ library chrome
   const libView = $("view-library");
   const collapsed = () => libView.classList.contains("side-collapsed");
-  const setCollapsed = (v: boolean) => { libView.classList.toggle("side-collapsed", v); pref.set("sn.side", v ? "1" : "0"); };
+  const setCollapsed = (v: boolean) => {
+    pref.set("sn.side", v ? "1" : "0");
+    const side = $("lib-sidebar");
+    if (!v || window.innerWidth >= 820 || collapsed()) { libView.classList.toggle("side-collapsed", v); return; } // only the overlay drawer slides out
+    side.classList.add("leaving");
+    setTimeout(() => { side.classList.remove("leaving"); libView.classList.add("side-collapsed"); }, 160);
+  };
   setCollapsed(window.innerWidth < 820 || pref.get("sn.side", "0") === "1"); // phones always start with the sidebar hidden
   let wasNarrow = window.innerWidth < 820;
   window.addEventListener("resize", () => { // turning a phone to portrait: the sidebar would cover half the library
@@ -1935,7 +2026,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const existing = items.find((i) => i.zotero?.attachmentKey === pdf.key && !i.trashed);
       if (existing) {
-        zmodal.classList.add("hidden");
+        setShown(zmodal, false);
         await openItem(existing.id);
         showToast("That PDF is already in your library: opened it.", "info");
         return;
@@ -1944,7 +2035,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const data = await zotero.downloadPdf(pdf.key);
       const title = many ? `${item.title} – ${pdf.title}` : item.title;
       const imported = await importBuffer(`${safeFileName(title)}.pdf`, data, undefined, { title, zotero: { attachmentKey: pdf.key, parentKey: pdf.parentKey, title: item.title } });
-      zmodal.classList.add("hidden");
+      setShown(zmodal, false);
       await refreshLibrary();
       scheduleSync();
       await openItem(imported.id);
@@ -1955,13 +2046,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function openZotero() {
-    zmodal.classList.remove("hidden");
+    setShown(zmodal, true);
     zoteroStatusUI();
     if (zotero.isConnected() && !zs.started) { zs.started = true; zoteroLoadCollections(); zoteroLoadItems(true); }
   }
   $("side-zotero").addEventListener("click", openZotero);
-  $("z-close").addEventListener("click", () => zmodal.classList.add("hidden"));
-  zmodal.addEventListener("pointerdown", (e) => { if (e.target === zmodal) zmodal.classList.add("hidden"); });
+  $("z-close").addEventListener("click", () => setShown(zmodal, false));
+  zmodal.addEventListener("pointerdown", (e) => { if (e.target === zmodal) setShown(zmodal, false); });
   document.querySelectorAll<HTMLElement>(".z-tab").forEach((t) =>
     t.addEventListener("click", () => {
       document.querySelectorAll(".z-tab").forEach((o) => o.classList.toggle("active", o === t));
@@ -2117,7 +2208,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function openDriveModal() {
-    modal.classList.remove("hidden");
+    setShown(modal, true);
     updateDriveButtons();
     loadDriveFiles();
   }
@@ -2134,8 +2225,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     openDriveModal();
   });
-  $("modal-close").addEventListener("click", () => modal.classList.add("hidden"));
-  modal.addEventListener("pointerdown", (e) => { if (e.target === modal) modal.classList.add("hidden"); });
+  $("modal-close").addEventListener("click", () => setShown(modal, false));
+  modal.addEventListener("pointerdown", (e) => { if (e.target === modal) setShown(modal, false); });
 
   const tabs = document.querySelectorAll(".modal-tab");
   tabs.forEach((tab) =>
@@ -2295,7 +2386,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         showToast(`Downloading "${file.name}"...`, "info");
         const { data, filename } = await drive.downloadFile(file.id);
         const item = await importBuffer(filename, data, isPdf ? undefined : file.id);
-        modal.classList.add("hidden");
+        setShown(modal, false);
         await refreshLibrary();
         scheduleSync();
         await openItem(item.id);
@@ -2366,12 +2457,13 @@ document.addEventListener("DOMContentLoaded", async () => {
    * Returns false only when there is nowhere left to go, and the app then closes as usual.
    */
   (window as any).__reaBack = (): boolean => {
-    const open = (id: string) => !$(id).classList.contains("hidden");
-    if (!pop.classList.contains("hidden")) { closePopover(); return true; }
+    const open = (id: string) => !$(id).classList.contains("hidden") && !$(id).classList.contains("leaving");
+    if (!pop.classList.contains("hidden") && !pop.classList.contains("leaving")) { closePopover(); return true; }
     if (open("move-modal")) { $("move-cancel").click(); return true; }
+    if (pageBrowserOpen()) { closePageBrowser(); return true; }
     if (open("page-modal")) { $("pm-cancel").click(); return true; }
-    if (open("zotero-modal")) { $("zotero-modal").classList.add("hidden"); return true; }
-    if (open("gdrive-modal")) { $("gdrive-modal").classList.add("hidden"); return true; }
+    if (open("zotero-modal")) { setShown($("zotero-modal"), false); return true; }
+    if (open("gdrive-modal")) { setShown($("gdrive-modal"), false); return true; }
     if (inEditor()) {
       if (te.open) { closeTextEditor(); return true; }  // the Math panel: like Cancel
       if (inl.on) { commitInline(); return true; }      // typing on the page: keep what was typed

@@ -43,6 +43,27 @@ await act("Delete page");
 ok(await head() === "Page 1 of 1" && (await fmt(0)).template === "grid", "Delete page removes it");
 ok(await ev(`[...document.querySelectorAll('#page-panel .pp-actions button')].find(b => b.textContent === 'Delete page').disabled`), "the last page can't be deleted");
 
+// the page browser: tap the page number
+await act("+ Page at end"); await act("+ Page at end");
+await click("#btn-page-panel"); // close the panel, so the page number is not under it
+await click("#page-here"); await sleep(400);
+let cards = await ev(`[...document.querySelectorAll('#pb-grid .pb-card')].map(c => c.querySelector('.pb-num span').textContent + (c.classList.contains('current') ? '*' : '')).join(',')`);
+ok(!await ev(`document.getElementById('page-browser').classList.contains('hidden')`) && cards === "1,2,3*", `tapping the page number opens a grid of the note's pages (${cards})`);
+ok(await ev(`[...document.querySelectorAll('#pb-grid img')].every(i => i.naturalWidth > 0 || i.src.startsWith('data:image/png'))`), "each page has a thumbnail");
+await ev(`[...document.querySelectorAll('#pb-grid .pb-card')][0].click()`); await sleep(700);
+ok(await ev(`document.getElementById('page-label').textContent`) === "1 / 3" && await ev(`document.getElementById('page-browser').classList.contains('hidden')`), "tapping a page goes there and closes the browser");
+await click("#page-here"); await sleep(400);
+const t3 = (await fmt(2)).template;
+await ev(`(() => {
+  const c = [...document.querySelectorAll('#pb-grid .pb-card')], from = c[2], to = c[0], r = to.getBoundingClientRect(), dt = new DataTransfer();
+  const fire = (el, type) => el.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.x + 5, clientY: r.y + 20 }));
+  fire(from, 'dragstart'); fire(to, 'dragover'); fire(to, 'drop'); fire(from, 'dragend');
+})()`); await sleep(500);
+ok((await fmt(0)).template === t3 && await ev(`document.querySelectorAll('#pb-grid .pb-card').length`) === 3, "dragging page 3 before page 1 reorders the note");
+ok(await ev(`window.__reaBack()`) === true, "Back closes the page browser");
+await sleep(400);
+await click("#btn-page-panel");
+
 // it stays open for the next note; an infinite canvas has one style for the whole sheet
 await click("#btn-back"); await sleep(800);
 await click(".card.create .card-thumb"); await click('#pm-kind button[data-v="infinite"]'); await click("#pm-ok"); await sleep(1200);

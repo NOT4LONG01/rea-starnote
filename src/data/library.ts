@@ -1,4 +1,4 @@
-import { StarNoteDocument, ParsedTile } from "../model/note-loader";
+import { StarNoteDocument, ParsedTile, ParsedStroke } from "../model/note-loader";
 import { drawPageTemplate, spacingOf } from "../model/pages";
 import { isMathText } from "../model/math";
 import { interpolateStrokePoints, generateRibbonGeometry, renderStrokeToCanvas } from "../model/stroke-interpolator";
@@ -115,36 +115,51 @@ function coverTile(doc: StarNoteDocument): ParsedTile | undefined {
 
 /** Renders the cover page to a small PNG data URL (3:4 card). */
 export function renderThumbnail(doc: StarNoteDocument, w = 300, h = 400): string {
+  const tile = coverTile(doc);
+  const rect = tile?.pageRect ?? tile?.rect ?? { left: 0, top: 0, right: 2100, bottom: 2100 };
+  // Cover-fit the page into the card, anchored at the top-left like a paper preview.
+  return paint(w, h, Math.max(w / (rect.right - rect.left), h / (rect.bottom - rect.top)), rect, tile, []);
+}
+
+/**
+ * One whole page at `width` px (height from the page's own shape), for the editor's page browser. `extra` are strokes drawn
+ * since the last save, in world coordinates (the ones on this page are included).
+ */
+export function renderPageThumbnail(tile: ParsedTile, width: number, extra: ParsedStroke[] = []): string {
+  const rect = tile.pageRect ?? tile.rect;
+  const k = width / (rect.right - rect.left);
+  const onPage = extra.filter((s) => s.points.some((p) => p.x >= rect.left && p.x <= rect.right && p.y >= rect.top && p.y <= rect.bottom));
+  return paint(Math.round(width), Math.round((rect.bottom - rect.top) * k), k, rect, tile, onPage);
+}
+
+function paint(w: number, h: number, k: number, rect: { left: number; top: number; right: number; bottom: number }, tile: ParsedTile | undefined, worldStrokes: ParsedStroke[]): string {
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
   const ctx = c.getContext("2d")!;
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, w, h);
-
-  const tile = coverTile(doc);
-  const rect = tile?.pageRect ?? tile?.rect ?? { left: 0, top: 0, right: 2100, bottom: 2100 };
   const rw = rect.right - rect.left, rh = rect.bottom - rect.top;
-  // Cover-fit the page into the card, anchored at the top-left like a paper preview.
-  const k = Math.max(w / rw, h / rh);
   ctx.save();
   ctx.scale(k, k);
   ctx.translate(-rect.left, -rect.top);
+  ctx.beginPath(); ctx.rect(rect.left, rect.top, rw, rh); ctx.clip(); // nothing outside the page
 
   if (tile?.backgroundImage) {
     ctx.drawImage(tile.backgroundImage, rect.left, rect.top, rw, rh);
   } else {
     drawPageTemplate(ctx, tile?.template ?? "ruled", rect, { line: "#e3e6ea", dot: "#c5cad1", lineWidth: 3, dotRadius: 5.2 }, tile ? spacingOf(tile) : undefined);
   }
-
+  const stroke = (s: ParsedStroke) => {
+    const smoothed = interpolateStrokePoints(s.points, { baseWidth: Math.max(s.width, 8), color: s.color, alpha: 1 }, 2);
+    if (s.alpha !== undefined && s.alpha < 1) ctx.globalAlpha = s.alpha;
+    renderStrokeToCanvas(ctx, generateRibbonGeometry(smoothed, s.color));
+    ctx.globalAlpha = 1;
+  };
+  for (const s of worldStrokes) stroke(s);
   if (tile) {
-    ctx.translate(tile.rect.left, tile.rect.top); // strokes are tile-local
-    for (const s of tile.strokes) {
-      const smoothed = interpolateStrokePoints(s.points, { baseWidth: Math.max(s.width, 8), color: s.color, alpha: 1 }, 2);
-      if (s.alpha !== undefined && s.alpha < 1) ctx.globalAlpha = s.alpha;
-      renderStrokeToCanvas(ctx, generateRibbonGeometry(smoothed, s.color));
-      ctx.globalAlpha = 1;
-    }
+    ctx.translate(tile.rect.left, tile.rect.top); // saved strokes and text are tile-local
+    for (const s of tile.strokes) stroke(s);
     for (const tb of tile.textBoxes ?? []) {
       if (isMathText(tb.text)) { // a formula is not typeset here: a soft block of its size, not its LaTeX source
         ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
