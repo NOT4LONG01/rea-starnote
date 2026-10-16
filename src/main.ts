@@ -902,7 +902,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       used.add(name);
       zip.file(name, bytes);
     }
-    downloadBlob(await zip.generateAsync({ type: "blob" }), `rea-starnote ${notes.length} notes.zip`);
+    downloadBlob(await zip.generateAsync({ type: "blob" }), `REA-StarNote ${notes.length} notes.zip`);
     showToast(`Saving ${notes.length} notes as one .zip…`, "info");
     return true;
   }
