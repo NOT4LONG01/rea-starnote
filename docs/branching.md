@@ -1,8 +1,8 @@
 # Branching, versions and releases
 
 `main` is always green (`npm run check` passes) and holds the newest work. From 1.0 on, each release line has a branch of its
-own so the version people use can get fixes while `main` moves on. **When:** `release/1.0` and `v1.0.0-beta.1` are cut
-only after a QA bundle comes back from testing with no problems; until then the app stays 0.x on `main`.
+own so the version people use can get fixes while `main` moves on. `release/1.0` was cut at `v1.0.0-beta.1` (2026-10-16), after
+Windows QA bundle 15 passed.
 
 ## Branches
 | Branch | Use | Lifetime |

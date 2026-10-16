@@ -1,7 +1,5 @@
 # 1.0.0-beta.1 on the phone (Galaxy Z Fold 8): the owner's checklist
 
-(For later: 1.0.0-beta.1 is built only after QA bundle 13 comes back with no problems.)
-
 Install `rea-starnote.apk` from the Drive QA folder (it updates the earlier install and keeps its notes: same signing key).
 Note PASS / FAIL and a line, or a screenshot, for each; send them to the development session (or paste them in chat).
 

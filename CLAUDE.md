@@ -1,7 +1,7 @@
 # rea-starnote: instructions for Claude
 
 Viewer/editor/sync client for StarNote `.note` files. TypeScript + HTML canvas; Tauri v2 desktop (Windows, Linux) and
-Tauri Android; a Node command line. Version 0.x until a QA bundle passes clean; then 1.0.0-beta.1 is cut on `release/1.0` (docs/branching.md). Docs index: `docs/README.md`.
+Tauri Android; a Node command line. Version 1.0.0-beta.N on `release/1.0` (fixes only there, merged back into main); `main` is the next version (docs/branching.md). Docs index: `docs/README.md`.
 
 ## What is the product
 The **Android, Windows and Linux apps** (Google Drive + Zotero connectors) and the **CLI**. The localhost web version

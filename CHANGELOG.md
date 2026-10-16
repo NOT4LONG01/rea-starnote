@@ -2,7 +2,9 @@
 
 Versions follow [SemVer](https://semver.org). Newest first.
 
-## Unreleased
+## 1.0.0-beta.1 (2026-10-16)
+First 1.0 beta, after Windows QA bundle 15 passed (its one finding, Esc and the page browser, is fixed here). For testing on real
+devices; the 1.0 line lives on `release/1.0` (docs/branching.md).
 ### Added
 - Grid view: a *Manual* sort (drag cards to reorder, or Move earlier / later), the same order as the Sections page list.
 - Clear sign-in errors (a missing or wrong client secret names the setting to fix).
