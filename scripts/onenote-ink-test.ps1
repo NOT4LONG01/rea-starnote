@@ -71,7 +71,8 @@ function Read-Isf([byte[]]$bytes) {
   $null = $w.DetachStream()
   $c = New-Object Windows.UI.Input.Inking.InkStrokeContainer
   Wait-ActionProgress ($c.LoadAsync($mem.GetInputStreamAt(0))) ([UInt64])
-  @($c.GetStrokes() | ForEach-Object { , @($_.GetInkPoints() | ForEach-Object { , @([double]$_.Position.X, [double]$_.Position.Y) }) })
+  # the leading comma keeps a one-stroke drawing a list of strokes (PowerShell unrolls what a function returns)
+  , @($c.GetStrokes() | ForEach-Object { , @($_.GetInkPoints() | ForEach-Object { , @([double]$_.Position.X, [double]$_.Position.Y) }) })
 }
 
 $summary = @()
@@ -104,7 +105,7 @@ for ($i = 0; $i -lt $pageNodes.Count; $i++) {
     $page = New-Object Windows.UI.Input.Inking.InkStrokeContainer
     foreach ($s in $strokes) {
       $list = New-Object 'System.Collections.Generic.List[Windows.Foundation.Point]'
-      foreach ($q in $s) { $list.Add((New-Object Windows.Foundation.Point($q[0] / 0.75, $q[1] / 0.75))) }
+      foreach ($q in $s) { $list.Add((New-Object Windows.Foundation.Point(($q[0] / 0.75), ($q[1] / 0.75)))) }  # parenthesised: the comma binds tighter than /
       $page.AddStroke($builder.CreateStroke($list))
     }
     $res = Wait-Op ($recognizers.RecognizeAsync($page, [Windows.UI.Input.Inking.InkRecognitionTarget]::All)) ([System.Collections.Generic.IReadOnlyList[Windows.UI.Input.Inking.InkRecognitionResult]])
