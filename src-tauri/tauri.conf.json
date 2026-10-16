@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "rea-starnote",
+  "productName": "REA-StarNote",
   "mainBinaryName": "rea-starnote",
   "version": "1.0.0-beta.1",
   "identifier": "com.starnote.interop",
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "rea-starnote",
+        "title": "REA-StarNote",
         "width": 1280,
         "height": 900,
         "minWidth": 400,

@@ -1,4 +1,6 @@
-# rea-starnote
+# REA-StarNote
+
+(The app is called REA-StarNote; the repository, the npm package and the `rea-starnote` command keep the lowercase name.)
 
 A viewer, editor and sync client for StarNote (`.note`) files, rebuilt from the real app's output with reverse-engineering
 tools. Version 0.x: under active testing, not yet a 1.0 release.

@@ -2,6 +2,13 @@
 
 Versions follow [SemVer](https://semver.org). Newest first.
 
+## Unreleased (towards 1.1)
+### Added
+- Select several notes and notebooks in the library (select button, Ctrl/⌘-click, or press and hold) and Move to…, Duplicate, Download (one .zip), Colour…, Move to trash; Restore / Delete forever in the Trash.
+- A default view for all notebooks (Sort > Notebooks open in Grid / Sections); a notebook's own choice is kept.
+### Changed
+- The app is named **REA-StarNote** everywhere you see it (window, app list, Android, browser tab). Commands, package and repo stay `rea-starnote`; installed apps keep their data (same identifier).
+
 ## 1.0.0-beta.1 (2026-10-16)
 First 1.0 beta, after Windows QA bundle 15 passed (its one finding, Esc and the page browser, is fixed here). For testing on real
 devices; the 1.0 line lives on `release/1.0` (docs/branching.md).

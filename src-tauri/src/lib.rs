@@ -68,7 +68,7 @@ fn respond(stream: &mut TcpStream, status: &str, body: &str) {
     let _ = stream.flush();
 }
 
-const DONE_PAGE: &str = "<!doctype html><meta charset=utf-8><title>StarNote</title><body style=\"font-family:system-ui;background:#2b2b2b;color:#eee;display:grid;place-items:center;height:100vh;margin:0\"><div><h2>Done here</h2><p>You can close this tab and return to rea-starnote: it finishes the sign-in and shows the result there.</p></div>";
+const DONE_PAGE: &str = "<!doctype html><meta charset=utf-8><title>REA-StarNote</title><body style=\"font-family:system-ui;background:#2b2b2b;color:#eee;display:grid;place-items:center;height:100vh;margin:0\"><div><h2>Done here</h2><p>You can close this tab and return to REA-StarNote: it finishes the sign-in and shows the result there.</p></div>";
 
 /// Waits for ONE real redirect on `listener` (ignores favicon/other requests and foreign Host headers).
 pub fn wait_for_reply(listener: TcpListener, timeout: Duration) -> Result<OAuthReply, String> {

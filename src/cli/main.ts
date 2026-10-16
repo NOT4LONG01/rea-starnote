@@ -13,7 +13,7 @@ import { parseStarNotePointsBinary } from "../model/stroke-interpolator";
 import { PAPERS, TEMPLATES, SPACINGS, spacingOf, newCanvasTile, newPageTile, nextPageTag, pageFormat, relayout, sizeOfPage, PageTemplate } from "../model/pages";
 import { exportAnnotatedPdf } from "../render/pdf-export";
 
-const HELP = `rea-starnote ${pkg.version}: work with StarNote (.note) files from the command line
+const HELP = `REA-StarNote ${pkg.version}: work with StarNote (.note) files from the command line
 
 Usage: rea-starnote <command> [options]
 
