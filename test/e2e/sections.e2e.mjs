@@ -10,10 +10,10 @@ const rows = () => ev(`[...document.querySelectorAll('#lib-sections .page-row:no
 const notebook = async (name, via) => { await click(via); await click('#pm-kind button[data-v="notebook"]'); await ev(`document.getElementById('pm-name').value = ${JSON.stringify(name)}`); await click("#pm-ok"); await sleep(300); };
 const draw = async () => { const r = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse); await click("#tool-pen"); await drag([[r.x + 500, r.y + 300], [r.x + 600, r.y + 330], [r.x + 700, r.y + 300]]); };
 const openNb = async (title) => { await ev(`[...document.querySelectorAll('#lib-grid .card')].find(c => c.querySelector('.card-title span')?.textContent === ${JSON.stringify(title)}).querySelector('.card-thumb').click()`); await sleep(500); };
-const rename = async (title) => { await ev(`window.prompt = () => ${JSON.stringify(title)}`); await click("#btn-more"); await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Rename')).click()`); await sleep(400); };
+const rename = async (title) => { await click("#btn-more"); await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Rename')).click()`); await sleep(300); await ev(`document.getElementById('ask-input').value = ${JSON.stringify(title)}; document.getElementById('ask-ok').click()`); await sleep(400); };
 
 // a notebook opens in the grid; the switch shows only inside a notebook
-ok(await ev(`document.getElementById('lib-view').classList.contains('hidden')`), "no Grid / Sections switch at the top level");
+ok(!await ev(`document.getElementById('lib-view').classList.contains('hidden')`) && await ev(`document.querySelector('#lib-view .active').textContent`) === "Grid", "All notes has its own Grid / Sections switch, on Grid");
 await notebook("Physics", ".card.create .card-thumb");
 ok(!await ev(`document.getElementById('lib-view').classList.contains('hidden')`) && await ev(`document.querySelector('#lib-view .active').textContent`) === "Grid", "inside a notebook: the switch, on Grid");
 await click('#lib-view button[data-v="sections"]');
@@ -62,6 +62,13 @@ ok(closed === true && await ev(`document.getElementById('popover').classList.con
 ok(await ev(`window.__reaBack()`) === true && await ev(`document.getElementById('lib-title').textContent`) === "All notes", "then leaves the notebook (not just the section)");
 ok(await ev(`window.__reaBack()`) === false, "at the top level Back is left to Android (the app closes)");
 await openNb("Physics");
+
+// a row keeps its height while selecting (the check sits on the thumbnail), and the rename dialog is the app's own
+const h0 = await ev(`document.querySelector('#lib-sections .page-row:not(.folder)').offsetHeight`);
+await click("#btn-select");
+const h1 = await ev(`document.querySelector('#lib-sections .page-row:not(.folder)').offsetHeight`);
+ok(Math.abs(h1 - h0) <= 2, `selecting does not make rows jump (${h0} -> ${h1} px)`);
+await click("#btn-select");
 
 // colour of a section
 await click("#lib-sections .sec-tab.active .sec-menu");
