@@ -75,7 +75,11 @@ mod win {
                 any = true;
             }
             if !any { out.push(None); continue; }
-            let results = container.RecognizeAsync(&strokes, InkRecognitionTarget::All).map_err(msg)?.join().map_err(msg)?; // blocking wait: this runs on a worker thread
+            // blocking wait (this is a worker thread); a line Windows refuses is skipped, not the whole page
+            let results = match container.RecognizeAsync(&strokes, InkRecognitionTarget::All).and_then(|op| op.join()) {
+                Ok(r) => r,
+                Err(_) => { out.push(None); continue; }
+            };
             let mut text = String::new();
             for i in 0..results.Size().map_err(msg)? {
                 let cands = results.GetAt(i).map_err(msg)?.GetTextCandidates().map_err(msg)?;

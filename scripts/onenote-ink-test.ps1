@@ -1,6 +1,6 @@
 <#
   Reads the original ink of OneNote pages (read-only, through OneNote's COM API) and
-  1) runs Windows' own handwriting recognizer on each page (the engine REA-StarNote uses on Windows), and
+  1) cuts each page into lines like the app does and runs Windows' own handwriting recognizer on each line (as REA-StarNote does), and
   2) saves each page's strokes as JSON (page coordinates, in points) for the later OneNote importer.
   Nothing is changed in OneNote. The output stays in -Out; it holds the owner's notes, so keep it private (never commit it).
 
@@ -75,6 +75,47 @@ function Read-Isf([byte[]]$bytes) {
   , @($c.GetStrokes() | ForEach-Object { , @($_.GetInkPoints() | ForEach-Object { , @([double]$_.Position.X, [double]$_.Position.Y) }) })
 }
 
+# Cut a page's strokes into lines the way the app does (src/integrations/handwriting.ts, groupIntoLines): strokes that overlap
+# vertically form a row; a horizontal gap of more than 3 line heights starts a new piece; dots and accents join the line they sit on.
+function Group-Lines($strokes) {
+  $items = @(foreach ($s in $strokes) {
+    $l = [double]::MaxValue; $t = [double]::MaxValue; $r = [double]::MinValue; $b = [double]::MinValue
+    foreach ($q in $s) { if ($q[0] -lt $l) { $l = $q[0] }; if ($q[0] -gt $r) { $r = $q[0] }; if ($q[1] -lt $t) { $t = $q[1] }; if ($q[1] -gt $b) { $b = $q[1] } }
+    [pscustomobject]@{ s = $s; l = $l; t = $t; r = $r; b = $b; mid = ($t + $b) / 2 }
+  })
+  if (-not $items.Count) { return , @() }
+  $hs = @($items | ForEach-Object { $_.b - $_.t } | Sort-Object)
+  $typical = $hs[[math]::Floor($hs.Count / 2)]
+  $isSmall = { param($i) [math]::Max($i.b - $i.t, $i.r - $i.l) -lt 0.35 * $typical }
+  $order = @(@($items | Where-Object { -not (& $isSmall $_) } | Sort-Object mid) + @($items | Where-Object { & $isSmall $_ }))
+  $rows = New-Object System.Collections.ArrayList
+  foreach ($it in $order) {
+    $tiny = & $isSmall $it
+    $row = $null
+    foreach ($r in $rows) {
+      $h = $r.b - $r.t; $ov = [math]::Min($r.b, $it.b) - [math]::Max($r.t, $it.t)
+      if ($tiny) { $fits = ($it.mid -ge $r.t - $h * 0.6) -and ($it.mid -le $r.b + $h * 0.3) -and ($it.r -ge $r.l - $h) -and ($it.l -le $r.r + $h) }
+      else { $fits = (($it.mid -ge $r.t - $h * 0.15) -and ($it.mid -le $r.b + $h * 0.15)) -or ($ov -gt 0.5 * [math]::Min($h, $it.b - $it.t)) }
+      if ($fits) { $row = $r; break }
+    }
+    if ($row) { [void]$row.items.Add($it); $row.l = [math]::Min($row.l, $it.l); $row.t = [math]::Min($row.t, $it.t); $row.r = [math]::Max($row.r, $it.r); $row.b = [math]::Max($row.b, $it.b) }
+    else { $n = [pscustomobject]@{ items = (New-Object System.Collections.ArrayList); l = $it.l; t = $it.t; r = $it.r; b = $it.b }; [void]$n.items.Add($it); [void]$rows.Add($n) }
+  }
+  $lines = New-Object System.Collections.ArrayList
+  foreach ($r in $rows) {
+    $h = [math]::Max(8, $r.b - $r.t)   # the app's 20-unit floor (8 points)
+    $cur = $null
+    foreach ($it in @($r.items | Sort-Object l)) {
+      # a new piece after a wide gap, or after 300 strokes (Windows' recognizer refuses very large inputs)
+      if ($cur -and (($it.l - $cur.r -gt 3 * $h) -or ($cur.strokes.Count -ge 300))) { [void]$lines.Add($cur); $cur = $null }
+      if (-not $cur) { $cur = [pscustomobject]@{ strokes = (New-Object System.Collections.ArrayList); l = $it.l; t = $it.t; r = $it.r; b = $it.b } }
+      [void]$cur.strokes.Add($it.s); $cur.l = [math]::Min($cur.l, $it.l); $cur.t = [math]::Min($cur.t, $it.t); $cur.r = [math]::Max($cur.r, $it.r); $cur.b = [math]::Max($cur.b, $it.b)
+    }
+    if ($cur) { [void]$lines.Add($cur) }
+  }
+  , @($lines | Sort-Object t, l)
+}
+
 $summary = @()
 $builder = New-Object Windows.UI.Input.Inking.InkStrokeBuilder
 for ($i = 0; $i -lt $pageNodes.Count; $i++) {
@@ -99,27 +140,28 @@ for ($i = 0; $i -lt $pageNodes.Count; $i++) {
     }
   }
   $inkWords = $p.SelectNodes("//one:InkWord", $pm).Count
-  # recognize the whole page in one call: Windows splits it into words/lines itself (results come with their rectangles)
+  # recognize line by line, like the app (a whole page at once gives a few coarse pieces and fails above ~1000 strokes)
   $lines = @()
-  if ($strokes.Count) {
+  $failed = 0
+  foreach ($ln in (Group-Lines $strokes)) {
     $page = New-Object Windows.UI.Input.Inking.InkStrokeContainer
-    foreach ($s in $strokes) {
+    foreach ($s in $ln.strokes) {
       $list = New-Object 'System.Collections.Generic.List[Windows.Foundation.Point]'
       foreach ($q in $s) { $list.Add((New-Object Windows.Foundation.Point(($q[0] / 0.75), ($q[1] / 0.75)))) }  # parenthesised: the comma binds tighter than /
       $page.AddStroke($builder.CreateStroke($list))
     }
-    $res = Wait-Op ($recognizers.RecognizeAsync($page, [Windows.UI.Input.Inking.InkRecognitionTarget]::All)) ([System.Collections.Generic.IReadOnlyList[Windows.UI.Input.Inking.InkRecognitionResult]])
-    foreach ($r in $res) {
-      $c = @($r.GetTextCandidates())
-      if ($c.Count) { $lines += [pscustomobject]@{ y = [math]::Round($r.BoundingRect.Y * 0.75); x = [math]::Round($r.BoundingRect.X * 0.75); text = $c[0] } }
-    }
+    try {
+      $res = Wait-Op ($recognizers.RecognizeAsync($page, [Windows.UI.Input.Inking.InkRecognitionTarget]::All)) ([System.Collections.Generic.IReadOnlyList[Windows.UI.Input.Inking.InkRecognitionResult]])
+      $text = (@($res | ForEach-Object { $c = @($_.GetTextCandidates()); if ($c.Count) { $c[0] } }) -join " ").Trim()
+      if ($text) { $lines += [pscustomobject]@{ y = [math]::Round($ln.t); x = [math]::Round($ln.l); text = $text } }
+    } catch { $failed++ }
   }
   $title = $pageNodes[$i].name
   $file = Join-Path $Out ("page-{0:D2}" -f $no)
   @{ section = $sec[0].name; page = $no; title = $title; units = "pt"; strokes = $strokes } | ConvertTo-Json -Depth 6 -Compress | Set-Content -Encoding UTF8 "$file.json"
   ($lines | Sort-Object y, x | ForEach-Object { "{0,6} {1,6}  {2}" -f $_.y, $_.x, $_.text }) | Set-Content -Encoding UTF8 "$file.recognized.txt"
-  $summary += [pscustomobject]@{ page = $no; title = $title; drawings = $drawings; strokes = $strokes.Count; inkWords = $inkWords; skipped = $skipped; recognized = $lines.Count }
-  Write-Host ("page {0,2}: {1} drawings, {2} strokes, {3} recognized pieces  ({4})" -f $no, $drawings, $strokes.Count, $lines.Count, $title)
+  $summary += [pscustomobject]@{ page = $no; title = $title; drawings = $drawings; strokes = $strokes.Count; inkWords = $inkWords; skipped = $skipped; lines = $lines.Count; failedLines = $failed }
+  Write-Host ("page {0,2}: {1} drawings, {2} strokes, {3} lines read, {4} lines failed  ({5})" -f $no, $drawings, $strokes.Count, $lines.Count, $failed, $title)
 }
 $summary | Format-Table | Out-String | Set-Content -Encoding UTF8 (Join-Path $Out "summary.txt")
 Write-Host "Done: $Out (page-NN.json = strokes, page-NN.recognized.txt = what Windows read, summary.txt). Keep it private."

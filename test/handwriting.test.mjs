@@ -29,6 +29,11 @@ test("a wide horizontal gap splits a row into two pieces (two columns, a margin 
   const ink = [letter(100, 100), letter(150, 100), letter(1200, 100), letter(1250, 100)];
   assert.equal(h.groupIntoLines(ink).length, 2);
 });
+test("a very long line is cut into pieces of at most 300 strokes (the Windows recognizer refuses ~1000)", () => {
+  const ink = Array.from({ length: 700 }, (_, i) => letter(100 + i * 20, 100, 15, 50));
+  const lines = h.groupIntoLines(ink);
+  assert.ok(lines.length === 3 && lines.every((l) => l.strokes.length <= 300), lines.map((l) => l.strokes.length).join(","));
+});
 test("a dot above a letter stays in its line", () => {
   const dot = { points: [{ x: 120, y: 80 }, { x: 122, y: 82 }] };
   const lines = h.groupIntoLines([letter(100, 100), letter(150, 100), dot]);

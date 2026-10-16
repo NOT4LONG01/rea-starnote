@@ -26,7 +26,7 @@ const union = (a: Box, b: Box): Box => ({ l: Math.min(a.l, b.l), t: Math.min(a.t
  * (more than `gapFactor` line heights) starts a new piece, so two columns or a margin note are not glued together.
  * Dots and accents (tiny strokes) join the line they sit in or on.
  */
-export function groupIntoLines(strokes: InkStroke[], gapFactor = 3): InkLine[] {
+export function groupIntoLines(strokes: InkStroke[], gapFactor = 3, maxStrokes = 300): InkLine[] {
   const items = strokes.filter((s) => s.points.length).map((s) => ({ s, box: boxOf(s.points) }));
   const heights = items.map((i) => i.box.b - i.box.t).sort((a, b) => a - b);
   const typical = heights[Math.floor(heights.length / 2)] ?? 0;
@@ -51,7 +51,8 @@ export function groupIntoLines(strokes: InkStroke[], gapFactor = 3): InkLine[] {
     row.items.sort((a, b) => a.box.l - b.box.l);
     let cur: InkLine | null = null;
     for (const it of row.items) {
-      if (cur && it.box.l - cur.box.r > gapFactor * h) { out.push(cur); cur = null; }
+      // a new piece after a wide gap, or after maxStrokes (Windows' recognizer refuses very large inputs: ~1000 strokes fail)
+      if (cur && (it.box.l - cur.box.r > gapFactor * h || cur.strokes.length >= maxStrokes)) { out.push(cur); cur = null; }
       if (!cur) cur = { strokes: [it.s], box: { ...it.box } };
       else { cur.strokes.push(it.s); cur.box = union(cur.box, it.box); }
     }
