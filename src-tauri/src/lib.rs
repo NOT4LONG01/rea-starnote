@@ -1,3 +1,4 @@
+mod ink;
 use serde::Serialize;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -131,7 +132,7 @@ pub fn run() {
         .manage(Loopback::default())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![loopback_start, loopback_wait])
+        .invoke_handler(tauri::generate_handler![loopback_start, loopback_wait, ink::ink_recognize])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

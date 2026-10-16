@@ -27,15 +27,17 @@ export interface LibraryItem {
 const DB_NAME = "starnote-library";
 const META = "meta";
 const DATA = "data";
+const INK = "ink"; // recognized handwriting per note (handwriting search); rebuilt whenever it is missing
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function db(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore(META, { keyPath: "id" });
-      req.result.createObjectStore(DATA);
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = (e) => {
+      const d = req.result, from = (e as IDBVersionChangeEvent).oldVersion;
+      if (from < 1) { d.createObjectStore(META, { keyPath: "id" }); d.createObjectStore(DATA); }
+      if (from < 2) d.createObjectStore(INK); // 2: handwriting search
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -93,11 +95,21 @@ export const library = {
     ),
 
   remove: (id: string) =>
-    run<void>([META, DATA], "readwrite", (tx) => {
+    run<void>([META, DATA, INK], "readwrite", (tx) => {
       tx.objectStore(META).delete(id);
       tx.objectStore(DATA).delete(id);
+      tx.objectStore(INK).delete(id);
     }),
+
+  /** Recognized handwriting of a note: per page, its ink fingerprint and the lines read from it. */
+  getInk: (id: string) => run<InkIndex | undefined>([INK], "readonly", (tx) => tx.objectStore(INK).get(id)),
+  putInk: (id: string, index: InkIndex) => run<void>([INK], "readwrite", (tx) => { tx.objectStore(INK).put(index, id); }),
 };
+
+export interface InkIndex {
+  lang: string;
+  pages: Record<string, { sig: string; lines: { text: string; box: { l: number; t: number; r: number; b: number } }[] }>;
+}
 
 /** The tile shown on the card: origin page when present, else the busiest page. */
 function coverTile(doc: StarNoteDocument): ParsedTile | undefined {

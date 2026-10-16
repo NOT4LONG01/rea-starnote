@@ -994,6 +994,40 @@ export class CanvasRenderer {
 
   public isStack(): boolean { return this.doc?.layout === "stack"; }
   public isInfinite(): boolean { return !!this.doc?.infinite; }
+
+  /** The ink of each page in world coordinates (saved strokes and the ones drawn since), for handwriting search. */
+  public inkByPage(): { tag: string; strokes: { points: { x: number; y: number }[] }[] }[] {
+    if (!this.doc) return [];
+    const pages = [...this.doc.tiles.values()].map((t) => ({ tile: t, strokes: t.strokes.map((s) => ({ points: s.points.map((p) => ({ x: p.x + t.rect.left, y: p.y + t.rect.top })) })) }));
+    for (const st of this.userDrawnStrokes) {
+      const p0 = st.points[Math.floor(st.points.length / 2)];
+      const home = p0 && pages.find(({ tile }) => { const r = tile.pageRect ?? tile.rect; return p0.x >= r.left && p0.x < r.right && p0.y >= r.top && p0.y < r.bottom; });
+      if (home) home.strokes.push({ points: st.points.map((p) => ({ x: p.x, y: p.y })) });
+    }
+    return pages.filter((p) => p.strokes.length).map((p) => ({ tag: p.tile.pageTag, strokes: p.strokes }));
+  }
+  /** Typed text boxes in world coordinates, for "Find in note". */
+  public textByPage(): { tag: string; text: string; box: { l: number; t: number; r: number; b: number } }[] {
+    if (!this.doc) return [];
+    return [...this.doc.tiles.values()].flatMap((t) => (t.textBoxes ?? []).map((b) => ({ tag: t.pageTag, text: b.text, box: { l: t.rect.left + b.rect.left, t: t.rect.top + b.rect.top, r: t.rect.left + b.rect.right, b: t.rect.top + b.rect.bottom } })));
+  }
+  /** The reading order of pages (for sorting search hits). */
+  public pageOrder(): string[] { return this.doc ? [...this.doc.tiles.values()].sort((a, b) => (a.pageRect ?? a.rect).top - (b.pageRect ?? b.rect).top || (a.pageRect ?? a.rect).left - (b.pageRect ?? b.rect).left).map((t) => t.pageTag) : []; }
+
+  private findMarks: { l: number; t: number; r: number; b: number }[] = [];
+  private findCurrent = -1;
+  /** Marks the places "Find in note" found (current one stronger) on the overlay; an empty list clears them. */
+  public setFindMarks(marks: { l: number; t: number; r: number; b: number }[], current: number) {
+    this.findMarks = marks; this.findCurrent = current;
+    this.overlayDirty = true;
+    this.drawOverlay();
+  }
+  /** Brings a world rectangle into view (centred, keeping the zoom unless it is far too close to read the page). */
+  public showBox(box: { l: number; t: number; r: number; b: number }) {
+    const cx = (box.l + box.r) / 2, cy = (box.t + box.b) / 2;
+    const panX = this.canvas.width / 2 - cx * this.zoom, panY = this.canvas.height / 3 - cy * this.zoom;
+    if (!this.glideTo(panX, panY)) { this.panX = panX; this.panY = panY; this.render(); }
+  }
   public canvasStyle(): { template: PageTemplate; spacing: number } | null { return this.doc?.infinite ? { ...this.doc.infinite } : null; }
 
   /** Infinite canvas: one page style for the whole sheet (and every tile in the file). */
@@ -1616,7 +1650,7 @@ export class CanvasRenderer {
 
   /** What changes while the pen moves goes on the overlay: the stroke being drawn, a shape being dragged, the selection. */
   private drawOverlay() {
-    const live = this.currentStrokePoints.length > 0 || !!this.shapeFrom || this.selected.size > 0 || this.isLassoing || !!this.textDraft;
+    const live = this.currentStrokePoints.length > 0 || !!this.shapeFrom || this.selected.size > 0 || this.isLassoing || !!this.textDraft || this.findMarks.length > 0;
     if (!live && !this.overlayDirty) return;
     const base = this.ctx, o = this.octx;
     this.ctx = o; // the drawing helpers paint into whichever context is current
@@ -1633,6 +1667,12 @@ export class CanvasRenderer {
       if (this.selected.size) this.renderSelectionOverlay();
       if (this.isLassoing) this.renderLassoPath();
       if (this.textDraft) this.drawTextDraft(this.textDraft);
+      this.findMarks.forEach((m, i) => { // what "Find in note" found: a soft highlight, the current one stronger with a frame
+        const pad = 8;
+        o.fillStyle = i === this.findCurrent ? "rgba(255, 200, 0, 0.38)" : "rgba(255, 220, 0, 0.18)";
+        o.fillRect(m.l - pad, m.t - pad, m.r - m.l + 2 * pad, m.b - m.t + 2 * pad);
+        if (i === this.findCurrent) { o.strokeStyle = "#f59e0b"; o.lineWidth = 2.5 / this.zoom; o.strokeRect(m.l - pad, m.t - pad, m.r - m.l + 2 * pad, m.b - m.t + 2 * pad); }
+      });
       o.restore();
     }
     this.ctx = base;
