@@ -55,6 +55,7 @@
             <h1 id="lib-title">All notes</h1>
             <div class="lib-tools">
               <div id="lib-view" class="lib-view hidden" role="group" aria-label="View"><button data-v="grid" title="Cards">Grid</button><button data-v="sections" title="Section tabs and a page list, like OneNote">Sections</button></div>
+              <button id="btn-select" class="icon-btn" title="Select several notes (or Ctrl-click, or press and hold a card)"><i data-icon="select"></i></button>
               <button id="btn-new-folder" class="icon-btn" title="New notebook (a folder for notes)"><i data-icon="folder"></i></button>
               <button id="btn-sort" class="icon-btn" title="Sort"><i data-icon="sort"></i></button>
               <button id="btn-import" class="icon-btn" title="Import .note / .pdf"><i data-icon="upload"></i></button>
@@ -69,6 +70,7 @@
 
           <div id="lib-grid" class="lib-grid"></div>
           <div id="lib-sections" class="lib-sections hidden"></div>
+          <div id="sel-bar" class="sel-bar hidden" role="toolbar" aria-label="Selection"></div>
           <p id="lib-drop-hint" class="lib-hint">Drop a <b>.note</b> or <b>.pdf</b> file anywhere to import it.</p>
         </main>
       </section>

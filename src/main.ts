@@ -13,6 +13,7 @@ import { isDesktopApp } from "./integrations/net";
 import { syncLibrary } from "./data/sync";
 import { ZoteroClient, ZoteroItem, ZoteroPdf, ZoteroCollection } from "./integrations/zotero";
 import { exportAnnotatedPdf, safeFileName } from "./render/pdf-export";
+import JSZip from "jszip";
 
 // ---------------------------------------------------------------- icons
 const ICONS: Record<string, string> = {
@@ -52,6 +53,7 @@ const ICONS: Record<string, string> = {
   lasso: '<path d="M12 4c-5 0-9 2.4-9 5.5S7 15 12 15s9-2.4 9-5.5S17 4 12 4z" stroke-dasharray="3 2.4"/><path d="M9 15c-.8 2.6.6 5 3 5"/>',
   paste: '<rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V4a1 1 0 011-1h4a1 1 0 011 1v1M9 12h6M9 16h6"/>',
   pagecfg: '<path d="M6 3h8l4 4v6"/><path d="M6 3v18h7"/><circle cx="18" cy="18" r="2.5"/><path d="M18 13.5v2M18 20.5v2M13.5 18h2M20.5 18h2"/>',
+  select: '<rect x="3" y="3" width="8" height="8" rx="2"/><path d="M4.8 7l1.6 1.6L9.5 5.4"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/>',
   quick: '<path d="M13 3L4 14h7l-1 7 9-11h-7z"/>',
   pages: '<rect x="3" y="4" width="6" height="16" rx="1.5"/><path d="M12 7h9M12 12h9M12 17h6"/>',
   folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
@@ -145,6 +147,7 @@ function debounce(fn: (...args: any[]) => void, delay: number) {
 const pref = {
   get: (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
+  remove: (k: string) => { try { localStorage.removeItem(k); } catch { /* private mode */ } },
 };
 
 const fmtDate = (t: number) => {
@@ -230,6 +233,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function enterIfMoved(box: HTMLElement) {
     const ctx = sectionsCtx();
     const place = [ui.filter, ui.folder, ui.kind, ui.query ? "q" : "", ctx ? viewOf(ctx.nb.id) : ""].join("|");
+    if (place !== lastPlace && lastPlace) sel.ids.clear(); // a selection belongs to the place it was made in
     box.classList.toggle("enter", place !== lastPlace);
     lastPlace = place;
   }
@@ -248,7 +252,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("lib-grid").classList.toggle("hidden", sections);
     $("lib-tabs").classList.toggle("hidden", sections);
     $("lib-sections").classList.toggle("hidden", !sections);
-    if (sections) { renderSections(ctx!.nb); return; }
+    if (sections) { renderSections(ctx!.nb); queueMicrotask(renderSelBar); return; }
     $("lib-drop-hint").innerHTML = ui.filter === "trash"
       ? "Trashed notes are also moved to Google Drive's trash when sync is on (Drive keeps them 30 days)."
       : "Drop a <b>.note</b> or <b>.pdf</b> file anywhere to import it.";
@@ -277,8 +281,78 @@ document.addEventListener("DOMContentLoaded", async () => {
     [...grid.children].forEach((c, i) => (c as HTMLElement).style.setProperty("--i", String(Math.min(i, 12))));
     if (list.length === 0 && ui.filter === "trash") grid.appendChild(el("div", "empty-state", "Trash is empty."));
     if (list.length === 0 && ui.filter === "all" && (ui.query || ui.kind !== "all")) grid.appendChild(el("div", "empty-state", "No notes match."));
-    hydrateIcons(grid);
+    queueMicrotask(() => { hydrateIcons(grid); renderSelBar(); });
   }
+
+  // ---------- selecting several items: the select button, Ctrl/⌘-click, or press and hold a card; then act on them together
+  const sel = { on: false, ids: new Set<string>() };
+  const selected = () => items.filter((i) => sel.ids.has(i.id));
+  function setSelecting(on: boolean) {
+    sel.on = on;
+    if (!on) sel.ids.clear();
+    $("btn-select").classList.toggle("on", on);
+    renderLibrary();
+  }
+  function toggleSelected(item: LibraryItem) {
+    if (sel.ids.has(item.id)) sel.ids.delete(item.id); else sel.ids.add(item.id);
+    sel.on = true;
+    $("btn-select").classList.add("on");
+    renderLibrary();
+  }
+  /** A card or row: Ctrl/⌘-click or press-and-hold selects; while selecting, a tap selects instead of opening. Returns true when it handled the tap. */
+  function selectable(elx: HTMLElement, item: LibraryItem) {
+    let timer = 0, held = false;
+    elx.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch") return;
+      held = false;
+      timer = window.setTimeout(() => { held = true; toggleSelected(item); navigator.vibrate?.(15); }, 500);
+    });
+    for (const ev of ["pointerup", "pointercancel", "pointermove"]) elx.addEventListener(ev, (e) => { if (ev !== "pointermove" || Math.hypot((e as PointerEvent).movementX, (e as PointerEvent).movementY) > 4) clearTimeout(timer); });
+    elx.addEventListener("click", (e) => {
+      if (held) { held = false; e.stopPropagation(); e.preventDefault(); return; } // the press-and-hold already selected it
+      if (sel.on || e.ctrlKey || e.metaKey) { e.stopPropagation(); e.preventDefault(); toggleSelected(item); }
+    }, true);
+    if (sel.on) {
+      elx.classList.toggle("selected", sel.ids.has(item.id));
+      const check = el("span", "sel-check");
+      check.innerHTML = sel.ids.has(item.id) ? '<i data-icon="check"></i>' : "";
+      (elx.querySelector(".card-thumb") ?? elx).appendChild(check);
+    }
+  }
+  /** The bar of actions for what is selected (only actions that fit the selection are offered). */
+  function renderSelBar() {
+    const bar = $("sel-bar");
+    const picked = selected();
+    if (!sel.on) { setShown(bar, false); return; }
+    bar.innerHTML = "";
+    const notes = picked.filter((i) => !isFolder(i)), folders = picked.filter(isFolder);
+    bar.appendChild(el("span", "sel-count", picked.length ? `${picked.length} selected` : "Tap notes to select"));
+    const act = (label: string, run: () => Promise<unknown> | unknown, cls = "") => {
+      const b = el("button", `btn btn-sm ${cls}`, label);
+      b.addEventListener("click", async () => { if ((await run()) !== false) setSelecting(false); });
+      bar.appendChild(b);
+      return b;
+    };
+    const visible = (ui.filter === "trash" ? visibleItems() : sectionsCtx() && viewOf(sectionsCtx()!.nb.id) === "sections" ? items.filter((i) => !i.trashed && i.parentId === ui.folder) : visibleItems());
+    const all = el("button", "btn btn-sm", picked.length === visible.length && visible.length ? "Select none" : "Select all");
+    all.addEventListener("click", () => { if (picked.length === visible.length) sel.ids.clear(); else visible.forEach((i) => sel.ids.add(i.id)); renderLibrary(); });
+    bar.appendChild(all);
+    if (picked.length) {
+      if (ui.filter === "trash") {
+        act("Restore", () => setTrashedMany(picked, false));
+        act("Delete forever", () => deleteForeverMany(picked), "btn-danger");
+      } else {
+        act("Move to…", () => moveManyTo(picked));
+        if (notes.length) act(notes.length > 1 ? "Duplicate" : "Duplicate", () => duplicateMany(notes));
+        if (notes.length) act(notes.length > 1 ? "Download (.zip)" : "Download .note", () => downloadMany(notes));
+        if (folders.length) { const b = el("button", "btn btn-sm", "Colour…"); b.dataset.pop = "1"; b.addEventListener("click", () => pickColor(folders, b)); bar.appendChild(b); }
+        act("Move to trash", () => setTrashedMany(picked, true), "btn-danger");
+      }
+    }
+    act("Done", () => true);
+    setShown(bar, true);
+  }
+  $("btn-select").addEventListener("click", () => setSelecting(!sel.on));
 
   /** The notes the grid shows right now, in their manual order (what a drag in the grid reorders). */
   const gridNotes = () => visibleItems().filter((i) => !isFolder(i));
@@ -317,6 +391,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const c = el("div", "card");
     if (!item.trashed) makeDraggable(c, item);
     if (!item.trashed && ui.sort === "manual" && !ui.query) gridReorder(c, item);
+    queueMicrotask(() => selectable(c, item)); // after the card is built (the check goes on its picture)
     const thumb = el("button", "card-thumb");
     if (item.thumb) {
       const img = el("img");
@@ -368,28 +443,36 @@ document.addEventListener("DOMContentLoaded", async () => {
     return c;
   }
 
-  async function setTrashed(item: LibraryItem, trashed: boolean) {
-    const folder = isFolder(item);
-    const all = folder ? [item, ...descendantsOf(items, item.id)] : [item]; // a notebook takes its contents with it, both ways
-    if (folder && trashed) {
-      const n = noteCount(items, item.id);
-      if (n && !confirm(`Move the notebook "${item.title}" and its ${n} note${n === 1 ? "" : "s"} to the trash?`)) return;
+  const setTrashed = (item: LibraryItem, trashed: boolean) => setTrashedMany([item], trashed);
+  /** Trash or restore items; a notebook takes its contents with it, both ways. One question, one message. */
+  async function setTrashedMany(picked: LibraryItem[], trashed: boolean) {
+    const folders = picked.filter(isFolder);
+    if (trashed && folders.length) {
+      const n = folders.reduce((k, f) => k + noteCount(items, f.id), 0);
+      const what = picked.length === 1 ? `the notebook "${picked[0].title}"` : `${picked.length} items`;
+      if (n && !confirm(`Move ${what} and the ${n} note${n === 1 ? "" : "s"} inside to the trash?`)) return false;
     }
-    for (const it of all) {
-      const fields: Partial<LibraryItem> = { trashed };
-      if (!trashed && it === item && it.parentId && !liveParent(items, it)) { fields.parentId = undefined; fields.modified = Date.now(); } // its notebook is in the trash: it comes back at the top level
-      await library.update(it.id, fields);
-      if (trashed) closeSession(sessions.find((s) => s.item.id === it.id), true);
+    for (const item of picked) {
+      for (const it of isFolder(item) ? [item, ...descendantsOf(items, item.id)] : [item]) {
+        const fields: Partial<LibraryItem> = { trashed };
+        if (!trashed && it === item && it.parentId && !liveParent(items, it)) { fields.parentId = undefined; fields.modified = Date.now(); } // its notebook is in the trash: it comes back at the top level
+        await library.update(it.id, fields);
+        if (trashed) closeSession(sessions.find((s) => s.item.id === it.id), true);
+      }
     }
     await refreshLibrary();
-    showToast(trashed ? "Moved to trash" : "Restored", "info");
+    const n = picked.length;
+    showToast(trashed ? (n === 1 ? "Moved to trash" : `${n} items moved to trash`) : (n === 1 ? "Restored" : `${n} items restored`), "info");
     scheduleSync(); // the Drive copy follows (Drive's trash is recoverable for 30 days)
+    return true;
   }
 
-  async function deleteForever(item: LibraryItem) {
-    const all = isFolder(item) ? [item, ...descendantsOf(items, item.id)] : [item];
-    const what = isFolder(item) ? `the notebook "${item.title}" and everything in it (${all.length - 1} item${all.length === 2 ? "" : "s"})` : `"${item.title}"`;
-    if (!confirm(`Permanently delete ${what}? This cannot be undone.`)) return;
+  const deleteForever = (item: LibraryItem) => deleteForeverMany([item]);
+  async function deleteForeverMany(picked: LibraryItem[]) {
+    const all = picked.flatMap((item) => (isFolder(item) ? [item, ...descendantsOf(items, item.id)] : [item]));
+    const one = picked[0];
+    const what = picked.length > 1 ? `${picked.length} items (${all.length} with what is inside)` : isFolder(one) ? `the notebook "${one.title}" and everything in it (${all.length - 1} item${all.length === 2 ? "" : "s"})` : `"${one.title}"`;
+    if (!confirm(`Permanently delete ${what}? This cannot be undone.`)) return false;
     for (const it of all) {
       if (it.syncId) addTombstone(it.syncId); // the Drive copy stays; just never re-import it
       await library.remove(it.id);
@@ -397,6 +480,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     await refreshLibrary();
     scheduleSync();
+    return true;
   }
 
   async function renameItem(item: LibraryItem) {
@@ -426,22 +510,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     $<HTMLInputElement>("lib-search").value = "";
     renderLibrary();
   }
-  async function moveItem(item: LibraryItem, target: string | null) {
-    if ((item.parentId ?? null) === target || !canMoveTo(items, item.id, target)) return;
-    const fields = { parentId: target ?? undefined, modified: Date.now() };
-    await library.update(item.id, fields);
-    const s = sessions.find((x) => x.item.id === item.id);
-    if (s) s.item = { ...s.item, ...fields };
+  const moveItem = (item: LibraryItem, target: string | null) => moveMany([item], target);
+  async function moveMany(picked: LibraryItem[], target: string | null) {
+    const movable = picked.filter((it) => (it.parentId ?? null) !== target && canMoveTo(items, it.id, target));
+    if (!movable.length) return false;
+    for (const item of movable) {
+      const fields = { parentId: target ?? undefined, modified: Date.now() };
+      await library.update(item.id, fields);
+      const s = sessions.find((x) => x.item.id === item.id);
+      if (s) s.item = { ...s.item, ...fields };
+    }
     await refreshLibrary();
-    showToast(`Moved to ${target ? items.find((i) => i.id === target)?.title ?? "the notebook" : "All notes"}`, "info");
+    const where = target ? items.find((i) => i.id === target)?.title ?? "the notebook" : "All notes";
+    showToast(movable.length === 1 ? `Moved to ${where}` : `${movable.length} items moved to ${where}`, "info");
     scheduleSync();
+    return true;
   }
-  async function moveItemTo(item: LibraryItem) {
-    const dest = await pickFolder(`Move "${item.title}" to`, item);
-    if (dest !== undefined) await moveItem(item, dest);
+  const moveItemTo = (item: LibraryItem) => moveManyTo([item]);
+  async function moveManyTo(picked: LibraryItem[]) {
+    const dest = await pickFolder(picked.length === 1 ? `Move "${picked[0].title}" to` : `Move ${picked.length} items to`, picked);
+    return dest !== undefined && (await moveMany(picked, dest));
   }
   /** The "Move to" chooser: the top level and every notebook, indented. Resolves to the folder id, null (top level) or undefined (cancelled). */
-  function pickFolder(title: string, moving: LibraryItem): Promise<string | null | undefined> {
+  function pickFolder(title: string, moving: LibraryItem[]): Promise<string | null | undefined> {
     return new Promise((resolve) => {
       const modal = $("move-modal"), list = $("move-list");
       $("move-title").textContent = title;
@@ -452,7 +543,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         b.style.paddingLeft = `${12 + depth * 18}px`;
         b.innerHTML = '<i data-icon="folder"></i><span></span>';
         b.querySelector("span")!.textContent = label;
-        b.disabled = !canMoveTo(items, moving.id, id) || (moving.parentId ?? null) === id;
+        b.disabled = moving.some((m) => !canMoveTo(items, m.id, id)) || moving.every((m) => (m.parentId ?? null) === id); // no notebook into itself; somewhere at least one item is not already
         b.addEventListener("click", () => done(id));
         list.appendChild(b);
       };
@@ -502,6 +593,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function folderCard(item: LibraryItem): HTMLElement {
     const c = el("div", "card folder-card");
+    queueMicrotask(() => selectable(c, item));
     const thumb = el("button", "card-thumb");
     thumb.innerHTML = '<i data-icon="folder"></i>';
     if (item.color) { thumb.style.color = item.color; thumb.style.background = `color-mix(in srgb, ${item.color} 22%, #2b2f36)`; }
@@ -550,29 +642,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     const { root, depth } = rootNotebookOf(items, ui.folder);
     return root && depth <= 1 ? { nb: root } : null;
   }
-  const viewOf = (nbId: string) => pref.get(`sn.view.${nbId}`, "grid");
+  /** A notebook's view: its own choice if it has one, else the default for all notebooks (Sort menu > "Notebooks open in"). */
+  const defaultView = () => pref.get("sn.view.default", "grid");
+  const viewOf = (nbId: string) => pref.get(`sn.view.${nbId}`, defaultView());
   $("lib-view").querySelectorAll<HTMLElement>("button").forEach((b) => b.addEventListener("click", () => {
     const ctx = sectionsCtx();
-    if (ctx) { pref.set(`sn.view.${ctx.nb.id}`, b.dataset.v!); renderLibrary(); }
+    if (!ctx) return;
+    if (b.dataset.v === defaultView()) pref.remove(`sn.view.${ctx.nb.id}`); else pref.set(`sn.view.${ctx.nb.id}`, b.dataset.v!); // only a choice that differs from the default is kept
+    renderLibrary();
   }));
   const liveIn = (parent: string) => items.filter((i) => !i.trashed && i.parentId === parent);
 
-  function pickColor(item: LibraryItem, anchor: HTMLElement) {
+  function pickColor(item: LibraryItem | LibraryItem[], anchor: HTMLElement) {
+    const list = Array.isArray(item) ? item : [item];
+    const one = list.length === 1 ? list[0] : null;
     openPopover(anchor, (root) => {
-      root.append(el("div", "pop-title", `Colour of "${item.title}"`));
+      root.append(el("div", "pop-title", one ? `Colour of "${one.title}"` : `Colour of ${list.length} notebooks`));
       const g = el("div", "color-swatches");
       for (const c of NB_COLORS) {
-        const b = el("button", c === item.color ? "active" : "");
+        const b = el("button", one && c === one.color ? "active" : "");
         b.style.setProperty("--c", c);
         b.title = c;
-        b.addEventListener("click", () => { closePopover(); void setColor(item, c); });
+        b.addEventListener("click", () => { closePopover(); void setColor(list, c); });
         g.appendChild(b);
       }
-      root.append(g, popItem("No colour", "close", () => void setColor(item, undefined)));
+      root.append(g, popItem("No colour", "close", () => void setColor(list, undefined)));
     });
   }
-  async function setColor(item: LibraryItem, color: string | undefined) {
-    await library.update(item.id, { color, modified: Date.now() });
+  async function setColor(list: LibraryItem[], color: string | undefined) {
+    for (const item of list) await library.update(item.id, { color, modified: Date.now() });
     await refreshLibrary();
     scheduleSync();
   }
@@ -697,6 +795,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       r.append(th, t, menu);
       r.addEventListener("click", () => openItem(p.id));
       reorderable(r, p, pages);
+      selectable(r, p);
       list.appendChild(r);
     }
     if (!list.children.length) list.appendChild(el("div", "empty-state", "No pages yet."));
@@ -768,16 +867,44 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
 
-  async function duplicateItem(item: LibraryItem) {
-    const bytes = await library.getBytes(item.id);
-    if (!bytes) return;
-    const now = Date.now();
-    await library.put(
-      { ...item, id: crypto.randomUUID(), title: `${item.title} copy`, created: now, modified: now, driveId: undefined, syncId: undefined, syncRemote: undefined, syncLocal: undefined },
-      bytes
-    );
+  const duplicateItem = (item: LibraryItem) => duplicateMany([item]);
+  async function duplicateMany(picked: LibraryItem[]) {
+    let n = 0;
+    for (const item of picked.filter((i) => !isFolder(i))) {
+      const bytes = await library.getBytes(item.id);
+      if (!bytes) continue;
+      const now = Date.now();
+      await library.put(
+        { ...item, id: crypto.randomUUID(), title: `${item.title} copy`, created: now, modified: now, order: undefined, driveId: undefined, syncId: undefined, syncRemote: undefined, syncLocal: undefined, syncParent: undefined },
+        bytes
+      );
+      n++;
+    }
     await refreshLibrary();
+    if (n > 1) showToast(`${n} notes duplicated`, "info");
     scheduleSync();
+    return n > 0;
+  }
+
+  /** Several notes download as one .zip (one Save-as on Android, one file on the desktop), each note under its own name. */
+  async function downloadMany(picked: LibraryItem[]) {
+    const notes = picked.filter((i) => !isFolder(i));
+    if (notes.length === 1) { await downloadItem(notes[0]); return true; }
+    if (!notes.length) return false;
+    const zip = new JSZip(), used = new Set<string>();
+    for (const item of notes) {
+      const s = sessions.find((x) => x.item.id === item.id);
+      if (s) await saveSession(s);
+      const bytes = await library.getBytes(item.id);
+      if (!bytes) continue;
+      let name = `${safeFileName(item.title)}.note`;
+      for (let k = 2; used.has(name); k++) name = `${safeFileName(item.title)} (${k}).note`;
+      used.add(name);
+      zip.file(name, bytes);
+    }
+    downloadBlob(await zip.generateAsync({ type: "blob" }), `rea-starnote ${notes.length} notes.zip`);
+    showToast(`Saving ${notes.length} notes as one .zip…`, "info");
+    return true;
   }
 
   async function downloadItem(item: LibraryItem) {
@@ -1838,7 +1965,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { closePopover(); if (optionsOpen) { optionsOpen = false; renderToolOptions(); } setShown(modal, false); setShown($("zotero-modal"), false); if (!pmEl.classList.contains("hidden")) $("pm-cancel").click(); if (pageBrowserOpen()) closePageBrowser(); }
+    if (e.key === "Escape") { closePopover(); if (optionsOpen) { optionsOpen = false; renderToolOptions(); } setShown(modal, false); setShown($("zotero-modal"), false); if (!pmEl.classList.contains("hidden")) $("pm-cancel").click(); if (pageBrowserOpen()) closePageBrowser(); if (sel.on && !inEditor()) setSelecting(false); }
     if (!inEditor() || (e.target as HTMLElement).closest("input,textarea")) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? renderer.redo() : renderer.undo(); }
@@ -1917,6 +2044,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     openPopover(e.currentTarget as HTMLElement, (root) => {
       for (const [key, label] of [["modified", "Last modified"], ["created", "Date created"], ["title", "Title (A–Z)"], ["manual", "Manual (drag to reorder)"]] as const) {
         root.appendChild(popItem(label, "sort", () => { ui.sort = key; pref.set("sn.sort", key); renderLibrary(); }, { checked: ui.sort === key }));
+      }
+      root.append(el("div", "pop-sep"), el("div", "pop-title", "Notebooks open in"));
+      for (const [v, label] of [["grid", "Grid"], ["sections", "Sections"]] as const) {
+        root.appendChild(popItem(label, v === "grid" ? "fit" : "pages", () => { pref.set("sn.view.default", v); renderLibrary(); }, { checked: defaultView() === v }));
       }
     });
   });
@@ -2518,6 +2649,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       void leaveToLibrary();
       return true;
     }
+    if (sel.on) { setSelecting(false); return true; }
     if (ui.query) { ui.query = ""; $<HTMLInputElement>("lib-search").value = ""; renderLibrary(); return true; }
     if (ui.filter !== "all") { ui.filter = "all"; renderLibrary(); return true; }
     if (ui.folder) {
