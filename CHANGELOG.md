@@ -5,7 +5,7 @@ Versions follow [SemVer](https://semver.org). Newest first.
 ## Unreleased (towards 1.1)
 ### Added
 - Select several notes and notebooks in the library (select button, Ctrl/⌘-click, or press and hold) and Move to…, Duplicate, Download (one .zip), Colour…, Move to trash; Restore / Delete forever in the Trash.
-- A default view for all notebooks (Sort > Notebooks open in Grid / Sections); a notebook's own choice is kept.
+- All notes has its own Grid / Sections switch: in Sections it works like a notebook, with the top-level notebooks as tabs and *Quick Notes* for loose notes (+ Notebook, + Page, reorder, colours). Each notebook keeps its own switch; the "Notebooks open in" default is gone.
 ### Changed
 - The app is named **REA-StarNote** everywhere you see it (window, app list, Android, browser tab). Commands, package and repo stay `rea-starnote`; installed apps keep their data (same identifier).
 

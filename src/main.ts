@@ -180,6 +180,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const ui = {
     folder: null as string | null, // the notebook being shown (null = top level)
+    rootTab: null as string | null, // All notes in the Sections view: the top-level notebook whose tab is open (null = Quick Notes)
     filter: "all" as "all" | "quick" | "trash", // quick = notes that are in no notebook
     kind: "all" as "all" | "note" | "pdf",
     query: "",
@@ -232,7 +233,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let lastPlace = "";
   function enterIfMoved(box: HTMLElement) {
     const ctx = sectionsCtx();
-    const place = [ui.filter, ui.folder, ui.kind, ui.query ? "q" : "", ctx ? viewOf(ctx.nb.id) : ""].join("|");
+    const place = [ui.filter, ui.folder, ui.rootTab, ui.kind, ui.query ? "q" : "", ctx ? viewOf(ctx.nb) : ""].join("|");
     if (place !== lastPlace && lastPlace) sel.ids.clear(); // a selection belongs to the place it was made in
     box.classList.toggle("enter", place !== lastPlace);
     lastPlace = place;
@@ -246,11 +247,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderCrumbs();
     const ctx = sectionsCtx();
     const view = $("lib-view");
-    const top = ui.filter === "all" && !ui.folder && !ui.query; // at the top level the switch sets how every notebook opens
-    view.classList.toggle("hidden", !ctx && !top);
-    view.title = top ? "How notebooks open (a notebook you switch yourself keeps its own choice)" : "";
-    const sections = !!ctx && viewOf(ctx.nb.id) === "sections";
-    const shown = top ? defaultView() : sections ? "sections" : "grid";
+    view.classList.toggle("hidden", !ctx);
+    const sections = !!ctx && viewOf(ctx.nb) === "sections";
+    const shown = sections ? "sections" : "grid";
     view.querySelectorAll<HTMLElement>("button").forEach((b) => b.classList.toggle("active", b.dataset.v === shown));
     $("lib-grid").classList.toggle("hidden", sections);
     $("lib-tabs").classList.toggle("hidden", sections);
@@ -337,7 +336,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       bar.appendChild(b);
       return b;
     };
-    const visible = (ui.filter === "trash" ? visibleItems() : sectionsCtx() && viewOf(sectionsCtx()!.nb.id) === "sections" ? items.filter((i) => !i.trashed && i.parentId === ui.folder) : visibleItems());
+    const sc = sectionsCtx();
+    const visible = ui.filter !== "trash" && sc && viewOf(sc.nb) === "sections" ? sectionPages(sectionsOpen()) : visibleItems();
     const all = el("button", "btn btn-sm", picked.length === visible.length && visible.length ? "Select none" : "Select all");
     all.addEventListener("click", () => { if (picked.length === visible.length) sel.ids.clear(); else visible.forEach((i) => sel.ids.add(i.id)); renderLibrary(); });
     bar.appendChild(all);
@@ -506,7 +506,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     const now = Date.now(), id = crypto.randomUUID();
     await library.put({ id, title: name, kind: "folder", created: now, modified: now, trashed: false, parentId: parent ?? undefined });
     await refreshLibrary();
-    openFolder(id); // straight into it, ready for its first note
+    const sc = sectionsCtx();
+    if (parent === null && sc && !sc.nb && viewOf(null) === "sections") { ui.rootTab = id; renderLibrary(); } // All notes in Sections: the new notebook's tab opens
+    else openFolder(id); // straight into it, ready for its first note
     scheduleSync();
   }
   function openFolder(id: string | null) {
@@ -642,21 +644,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   const NB_COLORS = ["#d9534f", "#e8833a", "#d4a514", "#4caf50", "#2aa1b3", "#3f7fd9", "#8a63d2", "#c45ca2"];
   const DEFAULT_TAB = "#5b8db8";
   /** The notebook whose sections are shown: when a top-level notebook or one of its sections is open (deeper levels use the grid). */
-  function sectionsCtx(): { nb: LibraryItem } | null {
-    if (ui.filter !== "all" || ui.query || !ui.folder) return null;
+  /**
+   * Where the Grid / Sections switch applies: a top-level notebook or one of its sections ({nb}), or All notes itself ({nb: null}),
+   * which in the Sections view is the root: its notebooks are the tabs and its loose notes the Quick Notes tab.
+   */
+  function sectionsCtx(): { nb: LibraryItem | null } | null {
+    if (ui.filter !== "all" || ui.query) return null;
+    if (!ui.folder) return { nb: null };
     const { root, depth } = rootNotebookOf(items, ui.folder);
     return root && depth <= 1 ? { nb: root } : null;
   }
-  /** A notebook's view: its own choice if it has one, else the default for all notebooks (Sort menu > "Notebooks open in"). */
-  const defaultView = () => pref.get("sn.view.default", "grid");
-  const viewOf = (nbId: string) => pref.get(`sn.view.${nbId}`, defaultView());
+  /** Each place keeps its own view: a notebook by its id, All notes as "root". Grid unless switched. */
+  const viewKey = (nb: LibraryItem | null) => `sn.view.${nb ? nb.id : "root"}`;
+  const viewOf = (nb: LibraryItem | null) => pref.get(viewKey(nb), "grid");
   $("lib-view").querySelectorAll<HTMLElement>("button").forEach((b) => b.addEventListener("click", () => {
     const ctx = sectionsCtx();
-    if (!ctx) { // top level: the default for all notebooks
-      if (ui.filter === "all" && !ui.folder) { pref.set("sn.view.default", b.dataset.v!); renderLibrary(); showToast(`Notebooks now open in ${b.dataset.v === "sections" ? "Sections" : "Grid"}`, "info"); }
-      return;
-    }
-    if (b.dataset.v === defaultView()) pref.remove(`sn.view.${ctx.nb.id}`); else pref.set(`sn.view.${ctx.nb.id}`, b.dataset.v!); // only a choice that differs from the default is kept
+    if (!ctx) return;
+    pref.set(viewKey(ctx.nb), b.dataset.v!);
     renderLibrary();
   }));
   const liveIn = (parent: string) => items.filter((i) => !i.trashed && i.parentId === parent);
@@ -734,33 +738,43 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  function renderSections(nb: LibraryItem) {
+  /** The open tab of a sections view: a section's (or notebook's) id; at All notes the chosen notebook, or null for Quick Notes. */
+  function sectionsOpen(): string | null { return ui.folder ?? ui.rootTab; }
+  /** What a tab lists: the notes (and deeper notebooks) in it; at All notes, Quick Notes lists the notes in no notebook. */
+  const sectionPages = (tab: string | null) => (tab ? items.filter((i) => !i.trashed && i.parentId === tab) : items.filter((i) => !i.trashed && !isFolder(i) && !liveParent(items, i)));
+
+  function renderSections(nb: LibraryItem | null) {
     const box = $("lib-sections");
     box.innerHTML = "";
+    const home = nb?.id ?? null; // the notebook, or null for All notes
+    const sections = (home ? liveIn(home) : items.filter((i) => !i.trashed && !i.parentId)).filter(isFolder).sort(byPlace);
+    const loose = sectionPages(home).filter((i) => !isFolder(i));
+    const hasOwn = loose.length > 0 || sections.length === 0; // the notebook's own pages (All notes: Quick Notes) get a tab of their own
+    if (nb) { if (ui.folder === nb.id && !hasOwn) ui.folder = sections[0].id; } // a notebook opens on its first section
+    else if (!sections.some((f) => f.id === ui.rootTab) && !(ui.rootTab === null && hasOwn)) ui.rootTab = hasOwn ? null : sections[0]?.id ?? null;
+    const current = sectionsOpen();
     enterIfMoved(box);
-    const sections = liveIn(nb.id).filter(isFolder).sort(byPlace);
-    const loose = () => liveIn(nb.id).filter((i) => !isFolder(i));
-    const hasOwn = loose().length > 0 || sections.length === 0; // the notebook's own pages get a tab of their own
-    if (ui.folder === nb.id && !hasOwn) ui.folder = sections[0].id; // a notebook opens on its first section
-    const current = ui.folder!;
-    const cur = items.find((i) => i.id === current)!;
+    const cur = current ? items.find((i) => i.id === current) : null;
     renderCrumbs();
 
     const tabs = el("div", "sec-tabs");
-    tabs.style.setProperty("--c", cur.color ?? DEFAULT_TAB);
-    const tab = (f: LibraryItem, label: string) => {
-      const b = el("button", `sec-tab${f.id === current ? " active" : ""}`);
-      b.style.setProperty("--c", f.color ?? DEFAULT_TAB);
+    tabs.style.setProperty("--c", cur?.color ?? DEFAULT_TAB);
+    const open = (id: string | null) => (nb ? openFolder(id) : (ui.rootTab = id, renderLibrary())); // at All notes a tab only switches; inside a notebook it opens the section
+    const tab = (f: LibraryItem | null, label: string) => {
+      const id = f?.id ?? null;
+      const b = el("button", `sec-tab${id === current ? " active" : ""}`);
+      b.style.setProperty("--c", f?.color ?? DEFAULT_TAB);
       b.appendChild(el("span", "", label));
-      b.addEventListener("click", () => openFolder(f.id));
-      dropTarget(b, f.id);
-      if (f.id === current && f.id !== nb.id) { // the open section's own menu
+      b.addEventListener("click", () => open(id));
+      dropTarget(b, id);
+      if (f && id === current && id !== home) { // the open section's (or notebook's) own menu
         const m = el("span", "sec-menu");
         m.dataset.pop = "1";
         m.innerHTML = '<i data-icon="chevron"></i>';
         m.addEventListener("click", (e) => {
           e.stopPropagation();
           openPopover(m, (root) => root.append(
+            ...(nb ? [] : [popItem("Open notebook", "folder", () => openFolder(f.id))]),
             popItem("Rename", "pen", () => renameItem(f)),
             popItem("Colour…", "sliders", () => pickColor(f, m)),
             popItem("Move to…", "folder", () => void moveItemTo(f)),
@@ -771,23 +785,24 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       return b;
     };
-    if (hasOwn) tabs.appendChild(tab(nb, nb.title));
-    for (const s of sections) tabs.appendChild(tab(s, s.title));
-    const add = el("button", "sec-tab add", "+ Section");
-    add.title = "Add a section to this notebook";
-    add.addEventListener("click", () => void createNote("notebook", nb.id));
+    if (hasOwn) tabs.appendChild(tab(nb, nb ? nb.title : "Quick Notes"));
+    for (const f of sections) tabs.appendChild(tab(f, f.title));
+    const add = el("button", "sec-tab add", nb ? "+ Section" : "+ Notebook");
+    add.title = nb ? "Add a section to this notebook" : "Add a notebook";
+    add.addEventListener("click", () => void createNote("notebook", home));
     tabs.appendChild(add);
     box.appendChild(tabs);
 
     const list = el("div", "page-list");
-    const pages = () => liveIn(current).filter((i) => !isFolder(i));
-    for (const f of liveIn(current).filter(isFolder).sort(byPlace)) { // notebooks inside a section open as a grid
+    const pages = () => sectionPages(current).filter((i) => !isFolder(i));
+    for (const f of (current ? liveIn(current) : []).filter(isFolder).sort(byPlace)) { // notebooks inside a section open as a grid
       const r = el("div", "page-row folder");
       r.innerHTML = '<div class="pr-thumb"><i data-icon="folder"></i></div>';
       const t = el("div"); t.append(el("div", "pr-title", f.title), el("div", "pr-date", `${noteCount(items, f.id)} notes`));
       r.appendChild(t);
       r.addEventListener("click", () => openFolder(f.id));
       dropTarget(r, f.id);
+      selectable(r, f);
       list.appendChild(r);
     }
     for (const p of pages().sort(byPlace)) {
@@ -807,10 +822,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       list.appendChild(r);
     }
     if (!list.children.length) list.appendChild(el("div", "empty-state", "No pages yet."));
-    // Notebook > Section > Pages: in a section you add pages, on the notebook's own tab you add a section
-    const atTop = current === nb.id;
-    const newPage = el("button", "btn page-add", atTop ? "+ Section" : "+ Page");
-    newPage.addEventListener("click", () => (atTop ? void createNote("notebook", nb.id) : newNote(lastFormat(), "pages"))); // a page: straight in, in the last page format, like OneNote
+    // Notebook > Section > Pages: in a section you add pages; on a notebook's own tab you add a section; Quick Notes takes a quick note
+    const atNotebookTop = !!nb && current === nb.id;
+    const newPage = el("button", "btn page-add", atNotebookTop ? "+ Section" : current === null ? "+ Quick note" : "+ Page");
+    newPage.addEventListener("click", () => (atNotebookTop ? void createNote("notebook", home) : newNote(lastFormat(), "pages", current))); // a page: straight in, in the last page format, like OneNote
     box.append(list, newPage);
     [...list.children].forEach((c, i) => (c as HTMLElement).style.setProperty("--i", String(Math.min(i, 12))));
     hydrateIcons(box);
@@ -865,7 +880,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (depth > 0 && !pages.length) list.appendChild(el("div", "rail-empty", "No pages"));
     }
     rail.append(head, list);
-    if (parent.id !== nb.id || viewOf(nb.id) !== "sections") { // in the sections view pages belong in sections, not on the notebook itself
+    if (parent.id !== nb.id || viewOf(nb) !== "sections") { // in the sections view pages belong in sections, not on the notebook itself
       const add = el("button", "btn btn-sm rail-add", "+ Page");
       add.title = `New page in ${parent.title}`;
       add.addEventListener("click", () => { ui.folder = parent.id; newNote(lastFormat(), "pages"); });
@@ -1011,7 +1026,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (active) active.view = renderer.snapshot();
   }
 
-  function newNote(format: PageFormat = DEFAULT_FORMAT, kind: NoteKind = "pages") {
+  function newNote(format: PageFormat = DEFAULT_FORMAT, kind: NoteKind = "pages", parent: string | null = ui.folder) {
     const now = Date.now();
     const doc: StarNoteDocument = { uuid: crypto.randomUUID(), title: "Untitled note", tiles: new Map(), layout: "stack" };
     if (kind === "infinite") { // free-form tiles that appear wherever you write
@@ -1022,7 +1037,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       doc.tiles.set("Page[0-0]", newPageTile("Page[0-0]", format));
       relayout(doc);
     }
-    const item: LibraryItem = { id: crypto.randomUUID(), title: "Untitled note", kind: "note", created: now, modified: now, trashed: false, parentId: ui.folder ?? undefined };
+    const item: LibraryItem = { id: crypto.randomUUID(), title: "Untitled note", kind: "note", created: now, modified: now, trashed: false, parentId: parent ?? undefined };
     const s: Session = { item, doc, view: null, isNew: true, saving: null, inFlight: 0 };
     sessions.push(s);
     activate(s);
@@ -2056,10 +2071,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       for (const [key, label] of [["modified", "Last modified"], ["created", "Date created"], ["title", "Title (A–Z)"], ["manual", "Manual (drag to reorder)"]] as const) {
         root.appendChild(popItem(label, "sort", () => { ui.sort = key; pref.set("sn.sort", key); renderLibrary(); }, { checked: ui.sort === key }));
       }
-      root.append(el("div", "pop-sep"), el("div", "pop-title", "Notebooks open in"));
-      for (const [v, label] of [["grid", "Grid"], ["sections", "Sections"]] as const) {
-        root.appendChild(popItem(label, v === "grid" ? "fit" : "pages", () => { pref.set("sn.view.default", v); renderLibrary(); }, { checked: defaultView() === v }));
-      }
     });
   });
 
@@ -2665,7 +2676,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (ui.filter !== "all") { ui.filter = "all"; renderLibrary(); return true; }
     if (ui.folder) {
       const ctx = sectionsCtx(); // in the sections view a section and its notebook are one place: Back leaves the notebook
-      openFolder(ctx && viewOf(ctx.nb.id) === "sections" ? ctx.nb.parentId ?? null : items.find((i) => i.id === ui.folder)?.parentId ?? null);
+      openFolder(ctx?.nb && viewOf(ctx.nb) === "sections" ? ctx.nb.parentId ?? null : items.find((i) => i.id === ui.folder)?.parentId ?? null);
       return true;
     }
     return false;

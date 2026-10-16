@@ -77,21 +77,30 @@ await click("#btn-select"); await tap("A");
 await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }); await sleep(400);
 ok(await bar() === "" && !await ev(`document.querySelector('#lib-grid .card.selected')`), "Esc ends selecting");
 
-// default view for all notebooks; a notebook's own choice is kept
+// All notes in the Sections view: the top-level notebooks are tabs, loose notes are Quick Notes
 await click('#lib-title button.crumb');
-await notebook("NB2");
-ok(!await ev(`document.getElementById('lib-view').classList.contains('hidden')`), "the Grid / Sections switch is on the top-level library too");
-await click('#lib-view button[data-v="sections"]'); // at the top level it sets the default for all notebooks
-ok(await ev(`localStorage.getItem('sn.view.default')`) === "sections", "and there it sets how every notebook opens");
-await ev(`${card("NB2")}.querySelector('.card-thumb').click()`); await sleep(500);
-ok(!await ev(`document.getElementById('lib-sections').classList.contains('hidden')`), "a notebook then opens in Sections");
-await click('#lib-view button[data-v="grid"]'); // this one is set to Grid on its own
+const tabsT = () => ev(`[...document.querySelectorAll('#lib-sections .sec-tab:not(.add)')].map(e => e.textContent.trim() + (e.classList.contains('active') ? '*' : '')).join(',')`);
+const rowsT = () => ev(`[...document.querySelectorAll('#lib-sections .page-row:not(.folder) .pr-title')].map(e => e.textContent).join(',')`);
+await click('#lib-view button[data-v="sections"]');
+ok(await tabsT() === "Quick Notes*,NB", `All notes as Sections: Quick Notes and each notebook as a tab (${await tabsT()})`);
+ok(await rowsT() === "C", `Quick Notes lists the notes in no notebook (${await rowsT()})`);
+await ev(`[...document.querySelectorAll('#lib-sections .sec-tab')].find(e => e.textContent.trim() === 'NB').click()`); await sleep(400);
+ok(await tabsT() === "Quick Notes,NB*" && (await rowsT()).split(",").sort().join() === "A,A copy,B,B copy", `a notebook's tab lists its notes, without leaving All notes (${await rowsT()})`);
+ok(await ev(`[...document.querySelectorAll('#lib-title .crumb')].map(e => e.textContent).join(' > ')`) === "All notes", "the path stays at All notes");
+await click("#lib-sections .page-add"); await sleep(1100); // + Page on a notebook's tab: a note in that notebook
+{ const r = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse); await click("#tool-pen"); await drag([[r.x + 400, r.y + 300], [r.x + 500, r.y + 330]]); } // an empty new page is not kept
+await click("#btn-back"); await sleep(800);
+ok((await rowsT()).split(",").length === 5 && await tabsT() === "Quick Notes,NB*", "+ Page made a note in NB, and Back returns to its tab");
+await click("#lib-sections .sec-tab.add"); await click('#pm-kind button[data-v="notebook"]'); await ev(`document.getElementById('pm-name').value = 'NB3'`); await click("#pm-ok"); await sleep(400);
+ok(await tabsT() === "Quick Notes,NB,NB3*", `+ Notebook adds a tab and opens it (${await tabsT()})`);
+// each place keeps its own view: NB was never switched, so it opens in Grid
+await ev(`[...document.querySelectorAll('#lib-sections .sec-tab')].find(e => e.textContent.trim() === 'NB').click()`); await sleep(300);
+await click("#lib-sections .sec-tab.active .sec-menu");
+await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Open notebook')).click()`); await sleep(500);
+ok(!await ev(`document.getElementById('lib-grid').classList.contains('hidden')`), "a notebook keeps its own view (Grid), All notes' choice does not spread");
+ok(!await ev(`document.querySelector('#popover')?.textContent.includes('Notebooks open in')`), "no more \"Notebooks open in\" setting");
 await click('#lib-title button.crumb');
-await ev(`${card("NB")}.querySelector('.card-thumb').click()`); await sleep(500);
-ok(!await ev(`document.getElementById('lib-sections').classList.contains('hidden')`), "other notebooks follow the default");
-await click('#lib-title button.crumb');
-await ev(`${card("NB2")}.querySelector('.card-thumb').click()`); await sleep(500);
-ok(!await ev(`document.getElementById('lib-grid').classList.contains('hidden')`), "and NB2 keeps its own choice (Grid)");
+ok(!await ev(`document.getElementById('lib-sections').classList.contains('hidden')`), "All notes remembers its Sections view");
 
 b.close();
 finish();
