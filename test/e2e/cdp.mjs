@@ -14,6 +14,7 @@ async function up() { try { return (await fetch(URL_APP)).ok; } catch { return f
 
 export async function launch({ width = 1280, height = 800, dpr = 1, query = "" } = {}) {
   const children = [];
+  process.on("exit", () => { for (const c of children) c.kill(); }); // registered first: even a failed start leaves no dev server or Chrome behind
   if (!(await up())) {
     const vite = spawn(process.execPath, [join(root, "node_modules/vite/bin/vite.js"), "--port", "1420", "--strictPort"], { cwd: root, stdio: "ignore" }); // not through npx: killing npx would leave vite running
     children.push(vite);
@@ -41,7 +42,6 @@ export async function launch({ width = 1280, height = 800, dpr = 1, query = "" }
   const mouse = (type, x, y, buttons = 0, pointerType = "mouse") => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: 1, pointerType });
   const drag = async (pts, pointerType = "mouse") => { await mouse("mousePressed", ...pts[0], 1, pointerType); for (const p of pts.slice(1)) await mouse("mouseMoved", ...p, 1, pointerType); await mouse("mouseReleased", ...pts.at(-1), 0, pointerType); await sleep(250); };
   const close = () => { ws.close(); for (const c of children) c.kill(); try { rmSync(profile, { recursive: true, force: true }); } catch {} };
-  process.on("exit", () => { for (const c of children) c.kill(); }); // a test that crashes must not leave Chrome or the dev server running
   const newNote = async () => { await ev(`document.querySelector('.card.create .card-thumb').click();document.getElementById('pm-ok').click()`); await sleep(1200); };
   return { send, ev, mouse, drag, close, newNote, sleep };
 }

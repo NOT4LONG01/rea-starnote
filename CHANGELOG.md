@@ -4,6 +4,7 @@ Versions follow [SemVer](https://semver.org). Newest first.
 
 ## Unreleased (towards 1.1)
 ### Added
+- **Find in note** (search button, Ctrl+F): typed text everywhere; handwriting where the device has a recognizer (Windows' own ink recognizer, Google ML Kit on Android), read in the background page by page and kept by the app.
 - Select several notes and notebooks in the library (select button, Ctrl/⌘-click, or press and hold) and Move to…, Duplicate, Download (one .zip), Colour…, Move to trash; Restore / Delete forever in the Trash.
 - The rename dialog is the app's own (no "JavaScript - tauri://localhost" prompt, no full-screen editor on Android); notebook and section tabs each get their own colour until one is picked; selecting no longer makes Sections rows jump.
 - All notes has its own Grid / Sections switch: in Sections it works like a notebook, with the top-level notebooks as tabs and *Quick Notes* for loose notes (+ Notebook, + Page, reorder, colours). Each notebook keeps its own switch; the "Notebooks open in" default is gone.

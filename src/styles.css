@@ -657,3 +657,16 @@ body.eink-mode *, body.eink-mode *::before, body.eink-mode *::after { animation:
 .sel-bar .sel-count { padding: 0 8px; font-weight: 600; }
 .sel-bar .btn { white-space: nowrap; }
 .ask-card { width: min(420px, 100%); }
+
+/* ---------- Find in note ---------- */
+.find-bar { position: absolute; z-index: 19; top: 8px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 16px)); background: var(--bg-bar);
+  border: 1px solid #4a4a4a; border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); padding: 6px 8px; animation: pop-in 150ms ease-out; }
+.find-bar.leaving { animation: pop-out 110ms ease-in forwards; }
+.find-row { display: flex; align-items: center; gap: 4px; }
+.find-row input { flex: 1; min-width: 0; background: var(--bg-deep); color: var(--text); border: 1px solid #444; border-radius: 8px; padding: 7px 10px; font-size: 15px; }
+.find-row input:focus { outline: none; border-color: var(--accent); }
+.find-row select { background: var(--bg-deep); color: var(--text); border: 1px solid #444; border-radius: 8px; padding: 6px; }
+.find-count { font-size: 13px; color: var(--muted); min-width: 64px; text-align: right; white-space: nowrap; }
+.find-status { font-size: 12px; color: var(--muted); padding: 4px 4px 0; }
+.find-status:empty { display: none; }
+#btn-find.on { color: var(--accent); }

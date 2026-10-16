@@ -9,9 +9,9 @@
 ## 1.1.0: handwriting search inside a note
 *Find in note* (a search button in the editor, Ctrl+F): typed text everywhere, handwriting where the platform has a recognizer
 (Windows' own ink recognizer, Google ML Kit on Android; none on Linux and the web). Each match jumps to its page and is highlighted.
-Recognized text is kept by the app, never written into the `.note`. Done so far: line grouping and matching (tested), the Windows
-recognizer (type-checked for Windows), the Android bridge (builds), storage and highlights. Next: the Find bar, then QA on Windows
-(the owner's PC has the Korean recognizer) and on the phone.
+Recognized text is kept by the app, never written into the `.note`. Built on the branch: line grouping and matching (unit tests),
+the Windows recognizer (type-checked for Windows), the Android bridge (builds), the stored index, the Find bar (e2e test with a
+stand-in recognizer). Next: QA on Windows (the owner's PC has the Korean recognizer) and on the phone, then merge into `main`.
 
 ## 1.1.1: AI assistant for students and researchers
 An assistant that sees what you wrote and helps with it, through the AI provider *you* connect.

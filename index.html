@@ -111,6 +111,7 @@
             <button id="btn-fit" class="icon-btn" title="Fit page height"><i data-icon="fith"></i></button>
           </div>
           <span id="zoom-level" class="zoom-level">100%</span>
+          <button id="btn-find" class="icon-btn" title="Find in this note (Ctrl+F): typed text, and handwriting where the device can read it"><i data-icon="search"></i></button>
           <button id="btn-page-panel" class="icon-btn" title="Page: format and page actions"><i data-icon="pagecfg"></i></button>
           <button id="btn-pen-settings" class="icon-btn" title="Pen &amp; touch settings"><i data-icon="sliders"></i></button>
           <button id="btn-more" class="icon-btn" title="More"><i data-icon="more"></i></button>
@@ -140,6 +141,17 @@
           <canvas id="note-canvas"></canvas>
           <aside id="page-rail" class="page-rail hidden" aria-label="Pages"></aside>
           <aside id="page-panel" class="page-panel hidden" aria-label="Page settings"></aside>
+          <div id="find-bar" class="find-bar hidden" role="search">
+            <div class="find-row">
+              <input id="find-input" type="search" placeholder="Find in this note" autocomplete="off" spellcheck="false" />
+              <span id="find-count" class="find-count"></span>
+              <button id="find-prev" class="icon-btn" title="Previous (Shift+Enter)">&#8593;</button>
+              <button id="find-next" class="icon-btn" title="Next (Enter)">&#8595;</button>
+              <select id="find-lang" title="Language of the handwriting"><option value="ko">한국어</option><option value="en">English</option></select>
+              <button id="find-close" class="icon-btn" title="Close (Esc)"><i data-icon="close"></i></button>
+            </div>
+            <div id="find-status" class="find-status"></div>
+          </div>
           <div id="page-browser" class="page-browser hidden" role="dialog" aria-label="Pages of this note">
             <div class="pb-head"><span id="pb-title">Pages</span><button id="pb-close" class="icon-btn" title="Close"><i data-icon="close"></i></button></div>
             <div id="pb-grid" class="pb-grid"></div>

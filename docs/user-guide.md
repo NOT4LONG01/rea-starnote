@@ -34,6 +34,11 @@ the top lists them.
 - **Pen vs finger:** the stylus draws; fingers pan and pinch to zoom (the hand tool lets a finger drag the page).
 - **Lasso** selects strokes to move, recolor, copy and paste. **Text** boxes take plain text and LaTeX math (`$$...$$`).
 - **Pages:** the pages menu adds, deletes, moves pages and changes their format; the add-page button at the end adds one.
+- **Find in note** (the search button, or Ctrl+F): finds a word in the note's typed text, and in your handwriting where the
+  device can read it (Windows with its handwriting language installed, Android; not Linux or the browser). The handwriting is
+  read in the background the first time and again only for pages you changed; the language (한국어 / English) is chosen in the
+  bar. Enter / ↓ next, Shift+Enter / ↑ previous; matches are highlighted and the view moves to each. The recognized text stays
+  in the app; the `.note` file is not changed.
 - **Page browser:** tap the page number ("2 / 3") to see every page as a thumbnail: tap one to go there, drag to reorder,
   ⋯ for move / add after / delete.
 - **Page panel** (the page-with-gear button, top right): the open page's paper, orientation, style and line spacing, applied

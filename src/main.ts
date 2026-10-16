@@ -7,7 +7,8 @@ import { loadStarNoteArchive, StarNoteDocument, ParsedTextBox } from "./model/no
 import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serializer";
 import { GoogleDriveService, GoogleDriveFile } from "./integrations/google-drive";
 import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
-import { library, renderThumbnail, renderPageThumbnail, LibraryItem } from "./data/library";
+import { library, renderThumbnail, renderPageThumbnail, LibraryItem, InkIndex } from "./data/library";
+import { groupIntoLines, inkSignature, findIn, platformRecognizer, inkLanguage, Box } from "./integrations/handwriting";
 import { isFolder, childrenOf, descendantsOf, pathOf, canMoveTo, noteCount, visibleTrash, liveParent, byPlace, orderAt, rootNotebookOf } from "./data/folders";
 import { isDesktopApp } from "./integrations/net";
 import { syncLibrary } from "./data/sync";
@@ -1094,6 +1095,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderer.fit("width");
     }
     resetFit();
+    if (findOpen()) closeFind(); // its marks belong to the note it searched
     s.view = null;
     renderEditorChrome();
     renderTabs();
@@ -1683,6 +1685,97 @@ document.addEventListener("DOMContentLoaded", async () => {
     hydrateIcons(grid);
   }
 
+  // ---------- Find in note: typed text everywhere, handwriting where the device has a recognizer (read in the background, page by page)
+  const find = { hits: [] as { page: string; box: Box }[], i: -1, index: null as InkIndex | null, noteId: "", run: 0 };
+  const findInput = $<HTMLInputElement>("find-input"), findStatus = $("find-status"), findLang = $<HTMLSelectElement>("find-lang");
+  const findOpen = () => !$("find-bar").classList.contains("hidden") && !$("find-bar").classList.contains("leaving");
+  function openFind() {
+    findLang.value = inkLanguage();
+    setShown($("find-bar"), true);
+    $("btn-find").classList.add("on");
+    findInput.focus(); findInput.select();
+    runFind(false);
+    void readInk();
+  }
+  function closeFind() {
+    find.run++; // stops a reading in progress
+    setShown($("find-bar"), false);
+    $("btn-find").classList.remove("on");
+    renderer.setFindMarks([], -1);
+  }
+  /** Reads the handwriting of the pages whose ink changed since last time; results show up page by page. */
+  async function readInk() {
+    if (!active) return;
+    const rec = platformRecognizer(), lang = findLang.value, id = active.item.id, run = ++find.run;
+    if (!rec) { findStatus.textContent = "This device can't read handwriting: finding typed text only."; return; }
+    let idx = find.noteId === id ? find.index : null;
+    idx ??= (await library.getInk(id).catch(() => undefined)) ?? null;
+    if (!idx || idx.lang !== lang) idx = { lang, pages: {} };
+    find.index = idx; find.noteId = id;
+    const pages = renderer.inkByPage();
+    for (const tag of Object.keys(idx.pages)) if (!pages.some((p) => p.tag === tag)) delete idx.pages[tag]; // a page without ink now
+    const todo = pages.filter((p) => idx!.pages[p.tag]?.sig !== inkSignature(p.strokes));
+    let n = 0;
+    for (const p of todo) {
+      if (run !== find.run) return;
+      findStatus.textContent = `Reading handwriting… page ${++n} of ${todo.length}`;
+      const lines = groupIntoLines(p.strokes);
+      try {
+        const texts = await rec(lines.map((l) => l.strokes.map((st) => st.points.map((q) => [Math.round(q.x), Math.round(q.y)] as [number, number]))), lang);
+        if (run !== find.run) return;
+        idx.pages[p.tag] = { sig: inkSignature(p.strokes), lines: lines.map((l, i) => ({ text: texts[i] ?? "", box: l.box })).filter((l) => l.text) };
+      } catch (e: any) {
+        const m = String(e?.message ?? e);
+        findStatus.textContent = /unavailable/i.test(m) ? m.replace(/^unavailable:\s*/i, "Handwriting can't be read here: ") + " Finding typed text only." : `Could not read handwriting: ${m}`;
+        return;
+      }
+      runFind(false);
+    }
+    if (todo.length) await library.putInk(id, idx).catch(() => undefined); // kept by the app (never in the .note), reused next time
+    const read = Object.values(idx.pages).reduce((k, pg) => k + pg.lines.length, 0);
+    findStatus.textContent = read ? `Handwriting read (${lang === "ko" ? "한국어" : "English"}): ${read} line${read === 1 ? "" : "s"}` : "No handwriting on these pages.";
+  }
+  /** Finds the query in typed text and in the handwriting read so far; `jump` moves to the first hit. */
+  function runFind(jump: boolean) {
+    const q = findInput.value;
+    const hits: { page: string; box: Box }[] = [];
+    if (q.trim()) {
+      for (const t of renderer.textByPage()) if (findIn(t.text, q).length) hits.push({ page: t.tag, box: t.box });
+      for (const [tag, pg] of Object.entries(find.noteId === active?.item.id ? find.index?.pages ?? {} : {})) {
+        for (const line of pg.lines) for (const m of findIn(line.text, q)) {
+          const w = line.box.r - line.box.l; // narrow the mark to the part of the line that matched
+          hits.push({ page: tag, box: { l: line.box.l + w * m.from, r: line.box.l + w * m.to, t: line.box.t, b: line.box.b } });
+        }
+      }
+    }
+    const order = renderer.pageOrder();
+    hits.sort((a, b) => order.indexOf(a.page) - order.indexOf(b.page) || a.box.t - b.box.t || a.box.l - b.box.l);
+    find.hits = hits;
+    if (find.i >= hits.length || jump) find.i = hits.length ? 0 : -1;
+    if (find.i < 0 && hits.length) find.i = 0;
+    $("find-count").textContent = !q.trim() ? "" : hits.length ? `${find.i + 1} of ${hits.length}` : "No matches";
+    renderer.setFindMarks(hits.map((h) => h.box), find.i);
+    if (jump && hits.length) renderer.showBox(hits[find.i].box);
+  }
+  function stepFind(d: number) {
+    if (!find.hits.length) return;
+    find.i = (find.i + d + find.hits.length) % find.hits.length;
+    $("find-count").textContent = `${find.i + 1} of ${find.hits.length}`;
+    renderer.setFindMarks(find.hits.map((h) => h.box), find.i);
+    renderer.showBox(find.hits[find.i].box);
+  }
+  $("btn-find").addEventListener("click", () => (findOpen() ? closeFind() : openFind()));
+  $("find-close").addEventListener("click", closeFind);
+  $("find-next").addEventListener("click", () => stepFind(1));
+  $("find-prev").addEventListener("click", () => stepFind(-1));
+  findInput.addEventListener("input", () => runFind(true));
+  findInput.addEventListener("keydown", (e) => {
+    e.stopPropagation(); // typing here is not a shortcut
+    if (e.key === "Enter") { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); }
+    else if (e.key === "Escape") { e.preventDefault(); closeFind(); }
+  });
+  findLang.addEventListener("change", () => { try { localStorage.setItem("sn.inklang", findLang.value); } catch { /* private mode */ } find.index = null; find.noteId = ""; void readInk(); });
+
   // ---------- page panel (right): the page's format, live, and the page actions; toggled from the top bar
   const panelOn = () => pref.get("sn.pagepanel", "0") === "1";
   let panelScope: "this" | "all" = "this", panelAt = "";
@@ -2020,6 +2113,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? renderer.redo() : renderer.undo(); }
     else if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); renderer.redo(); }
     else if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); if (active) saveSession(active); }
+    else if (mod && e.key.toLowerCase() === "f") { e.preventDefault(); openFind(); }
     else if (mod && e.key.toLowerCase() === "c") { if (renderer.copySelection()) { e.preventDefault(); showToast("Copied. Open any note and paste.", "success"); } }
     else if (mod && e.key.toLowerCase() === "x") { if (renderer.cutSelection()) e.preventDefault(); }
     else if (mod && e.key.toLowerCase() === "v") { if (renderer.hasClipboard()) { e.preventDefault(); renderer.pasteClipboard(); } }
@@ -2690,6 +2784,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (open("gdrive-modal")) { setShown($("gdrive-modal"), false); return true; }
     if (inEditor()) {
       if (te.open) { closeTextEditor(); return true; }  // the Math panel: like Cancel
+      if (findOpen()) { closeFind(); return true; }
       if (inl.on) { commitInline(); return true; }      // typing on the page: keep what was typed
       if (optionsOpen) { optionsOpen = false; renderToolOptions(); return true; }
       void leaveToLibrary();
