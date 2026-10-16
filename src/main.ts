@@ -246,9 +246,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderCrumbs();
     const ctx = sectionsCtx();
     const view = $("lib-view");
-    view.classList.toggle("hidden", !ctx);
+    const top = ui.filter === "all" && !ui.folder && !ui.query; // at the top level the switch sets how every notebook opens
+    view.classList.toggle("hidden", !ctx && !top);
+    view.title = top ? "How notebooks open (a notebook you switch yourself keeps its own choice)" : "";
     const sections = !!ctx && viewOf(ctx.nb.id) === "sections";
-    view.querySelectorAll<HTMLElement>("button").forEach((b) => b.classList.toggle("active", b.dataset.v === (sections ? "sections" : "grid")));
+    const shown = top ? defaultView() : sections ? "sections" : "grid";
+    view.querySelectorAll<HTMLElement>("button").forEach((b) => b.classList.toggle("active", b.dataset.v === shown));
     $("lib-grid").classList.toggle("hidden", sections);
     $("lib-tabs").classList.toggle("hidden", sections);
     $("lib-sections").classList.toggle("hidden", !sections);
@@ -647,7 +650,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const viewOf = (nbId: string) => pref.get(`sn.view.${nbId}`, defaultView());
   $("lib-view").querySelectorAll<HTMLElement>("button").forEach((b) => b.addEventListener("click", () => {
     const ctx = sectionsCtx();
-    if (!ctx) return;
+    if (!ctx) { // top level: the default for all notebooks
+      if (ui.filter === "all" && !ui.folder) { pref.set("sn.view.default", b.dataset.v!); renderLibrary(); showToast(`Notebooks now open in ${b.dataset.v === "sections" ? "Sections" : "Grid"}`, "info"); }
+      return;
+    }
     if (b.dataset.v === defaultView()) pref.remove(`sn.view.${ctx.nb.id}`); else pref.set(`sn.view.${ctx.nb.id}`, b.dataset.v!); // only a choice that differs from the default is kept
     renderLibrary();
   }));
