@@ -17,7 +17,8 @@ type Action =
   | { kind: "draw"; stroke: ParsedStroke }
   | { kind: "erase"; strokes: ParsedStroke[] }
   | { kind: "replace"; from: ParsedStroke[]; to: ParsedStroke[] } // move / recolor / resize a selection
-  | { kind: "text"; from: ParsedTextBox[]; to: ParsedTextBox[] }; // create / edit / delete a text box
+  | { kind: "text"; from: ParsedTextBox[]; to: ParsedTextBox[] } // create / edit / delete a text box
+  | { kind: "group"; actions: Action[] }; // several changes undone and redone as one (ink converted to a formula)
 
 /** Everything needed to park an open note (editor tab) and come back to it. */
 export interface ViewSnapshot {
@@ -192,8 +193,9 @@ export class CanvasRenderer {
     const gone = new Set([...saved, ...deleted]);
     this.clearSelection(); // saved copies are new objects
     this.userDrawnStrokes = this.userDrawnStrokes.filter((s) => !gone.has(s));
-    const keep = (a: Action) =>
-      a.kind === "draw" ? !gone.has(a.stroke)
+    const keep = (a: Action): boolean =>
+      a.kind === "group" ? a.actions.every(keep)
+      : a.kind === "draw" ? !gone.has(a.stroke)
       : a.kind === "erase" ? !a.strokes.some((s) => gone.has(s))
       : a.kind === "text" ? false // saved boxes were written: their history ends here, like strokes'
       : ![...a.from, ...a.to].some((s) => gone.has(s));
@@ -225,6 +227,7 @@ export class CanvasRenderer {
   }
 
   private apply(a: Action, reverse: boolean) {
+    if (a.kind === "group") { (reverse ? [...a.actions].reverse() : a.actions).forEach((x) => this.apply(x, reverse)); return; }
     const add = (list: ParsedStroke[]) => {
       for (const st of list) {
         const tile = st.src && this.doc?.tiles.get(st.src.tag);
@@ -731,7 +734,7 @@ export class CanvasRenderer {
    * exists keeps its page. `size` is the box's width and height (measured text, or the typeset math).
    * A change is one undo step.
    */
-  public commitTextBox(existing: ParsedTextBox | null, spec: { text: string; color: string; fontSize: number; isBold?: boolean; isItalic?: boolean; size: { width: number; height: number } } | null, at: { x: number; y: number }): boolean {
+  public commitTextBox(existing: ParsedTextBox | null, spec: { text: string; color: string; fontSize: number; isBold?: boolean; isItalic?: boolean; size: { width: number; height: number } } | null, at: { x: number; y: number }, replacing: ParsedStroke[] = []): boolean {
     if (!this.doc) return false;
     let next: ParsedTextBox | null = null;
     if (spec && spec.text.trim()) {
@@ -749,9 +752,46 @@ export class CanvasRenderer {
     const from = existing ? [existing] : [], to = next ? [next] : [];
     from.forEach((b) => this.dropTextBox(b));
     to.forEach((b) => this.putTextBox(b));
-    this.commit({ kind: "text", from, to });
+    const textStep: Action = { kind: "text", from, to };
+    const gone = replacing.filter((st) => this.allStrokes().includes(st)); // ink this text replaces (Convert to LaTeX): gone in the same undo step
+    if (gone.length) {
+      gone.forEach((st) => this.removeStroke(st));
+      this.clearSelection();
+      this.commit({ kind: "group", actions: [{ kind: "erase", strokes: gone }, textStep] });
+    } else this.commit(textStep);
     this.render();
     return true;
+  }
+
+  /** The selected ink, and where it is. */
+  public selectedStrokes(): ParsedStroke[] { return [...this.selected]; }
+  public selectionBounds(): { l: number; t: number; r: number; b: number } | null {
+    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+    for (const st of this.selected) {
+      const o = this.originOf(st);
+      for (const p of st.points) { l = Math.min(l, p.x + o.x); t = Math.min(t, p.y + o.y); r = Math.max(r, p.x + o.x); b = Math.max(b, p.y + o.y); }
+    }
+    return Number.isFinite(l) ? { l, t, r, b } : null;
+  }
+  /** The selected ink drawn black on white, as a PNG (base64, no prefix), longest side at most `maxPx`: what an AI model is shown. */
+  public selectionImage(maxPx = 1024): string | null {
+    const box = this.selectionBounds();
+    if (!box) return null;
+    const pad = 24, w = box.r - box.l + 2 * pad, h = box.b - box.t + 2 * pad;
+    const k = Math.min(1.5, maxPx / Math.max(w, h)); // never blown up beyond 1.5x
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, c.width, c.height);
+    const base = this.ctx, ink = this.eInkMode, view = this.view;
+    this.ctx = g; this.eInkMode = true; // E-Ink style: everything black, so colours don't matter to the reader
+    this.view = { l: -Infinity, t: -Infinity, r: Infinity, b: Infinity };
+    try {
+      g.scale(k, k);
+      g.translate(pad - box.l, pad - box.t);
+      for (const st of this.selected) { const o = this.originOf(st); g.save(); g.translate(o.x, o.y); this.drawStroke(st, false); g.restore(); } // saved strokes are page-local
+    } finally { this.ctx = base; this.eInkMode = ink; this.view = view; }
+    return c.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
   }
 
   /** Typeset math as an image, loaded lazily; the canvas repaints when it is ready. */

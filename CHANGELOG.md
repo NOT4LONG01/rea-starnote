@@ -6,6 +6,7 @@ Versions follow [SemVer](https://semver.org). Newest first.
 ### Added
 - Select several notes and notebooks in the library (select button, Ctrl/⌘-click, or press and hold) and Move to…, Duplicate, Download (one .zip), Colour…, Move to trash; Restore / Delete forever in the Trash.
 - The rename dialog is the app's own (no "JavaScript - tauri://localhost" prompt, no full-screen editor on Android); notebook and section tabs each get their own colour until one is picked; selecting no longer makes Sections rows jump.
+- **Convert to LaTeX**: lasso handwritten math, press Σ, and an AI model reads it; the Math panel opens with the LaTeX to check, and Done swaps the ink for the typeset formula (one Undo brings the ink back). Uses your own OpenRouter key (free models work), typed into *More > AI settings* and kept on the device; nothing is sent until you press Σ, and the first time asks first.
 - All notes has its own Grid / Sections switch: in Sections it works like a notebook, with the top-level notebooks as tabs and *Quick Notes* for loose notes (+ Notebook, + Page, reorder, colours). Each notebook keeps its own switch; the "Notebooks open in" default is gone.
 ### Changed
 - The app is named **REA-StarNote** everywhere you see it (window, app list, Android, browser tab). Commands, package and repo stay `rea-starnote`; installed apps keep their data (same identifier).
