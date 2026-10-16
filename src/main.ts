@@ -749,7 +749,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const home = nb?.id ?? null; // the notebook, or null for All notes
     const sections = (home ? liveIn(home) : items.filter((i) => !i.trashed && !i.parentId)).filter(isFolder).sort(byPlace);
     const loose = sectionPages(home).filter((i) => !isFolder(i));
-    const hasOwn = loose.length > 0 || sections.length === 0; // the notebook's own pages (All notes: Quick Notes) get a tab of their own
+    const hasOwn = !nb || loose.length > 0 || sections.length === 0; // a notebook's own pages get a tab when it has some; All notes always has Quick Notes (where a quick note is added)
     if (nb) { if (ui.folder === nb.id && !hasOwn) ui.folder = sections[0].id; } // a notebook opens on its first section
     else if (!sections.some((f) => f.id === ui.rootTab) && !(ui.rootTab === null && hasOwn)) ui.rootTab = hasOwn ? null : sections[0]?.id ?? null;
     const current = sectionsOpen();

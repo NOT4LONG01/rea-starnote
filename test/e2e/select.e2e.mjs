@@ -101,6 +101,12 @@ ok(!await ev(`document.getElementById('lib-grid').classList.contains('hidden')`)
 ok(!await ev(`document.querySelector('#popover')?.textContent.includes('Notebooks open in')`), "no more \"Notebooks open in\" setting");
 await click('#lib-title button.crumb');
 ok(!await ev(`document.getElementById('lib-sections').classList.contains('hidden')`), "All notes remembers its Sections view");
+// with no loose notes left, the Quick Notes tab stays (it is where a quick note is added)
+await ev(`[...document.querySelectorAll('#lib-sections .sec-tab')].find(e => e.textContent.trim() === 'Quick Notes').click()`); await sleep(300);
+await ev(`[...document.querySelectorAll('#lib-sections .page-row')].find(r => r.textContent.includes('C')).querySelector('button').click()`); await sleep(300);
+await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.trim() === 'Move to…').click()`); await sleep(300);
+await ev(`[...document.querySelectorAll('#move-list button')].find(e => e.textContent.trim() === 'NB').click()`); await sleep(700);
+ok((await tabsT()).startsWith("Quick Notes*") && await ev(`document.querySelector('#lib-sections .page-add').textContent`) === "+ Quick note", `an empty Quick Notes keeps its tab and "+ Quick note" (${await tabsT()})`);
 
 b.close();
 finish();
