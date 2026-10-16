@@ -129,7 +129,9 @@ function showToast(message: string, type: "success" | "error" | "info" = "info")
   const container = $("toast-container");
   const toast = el("div", `toast ${type}`, message);
   container.appendChild(toast);
-  setTimeout(() => setShown(toast, false, () => toast.remove()), 3200); // slides back out to the edge
+  const hide = () => setShown(toast, false, () => toast.remove()); // slides back out to the edge
+  if (type === "error") { toast.style.pointerEvents = "auto"; toast.title = "Tap to close"; toast.addEventListener("click", hide); }
+  setTimeout(hide, type === "error" ? Math.max(8000, message.length * 70) : 3200); // an error stays long enough to read (you may still be in the browser)
 }
 
 function debounce(fn: (...args: any[]) => void, delay: number) {
@@ -2221,7 +2223,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         updateDriveStatusUI();
         runSync(true);
         return;
-      } catch (err: any) { showToast(err.message, "error"); }
+      } catch (err: any) { showToast(err.message, "error"); showSignInProblem(err.message); updateDriveStatusUI(); return; }
     }
     openDriveModal();
   });
@@ -2276,6 +2278,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  /** A failed sign-in stays visible in the Drive dialog (the toast may pass while you are still in the browser); a secret problem opens Settings. */
+  function showSignInProblem(message: string) {
+    updateDriveStatusUI();
+    openDriveModal();
+    const p = $("user-email");
+    p.textContent = message;
+    p.classList.add("error-text");
+    if (/client secret|Client ID/i.test(message)) (document.querySelector('.modal-tab[data-tab="tab-settings"]') as HTMLElement | null)?.click();
+  }
   $("btn-google-signin").addEventListener("click", async () => {
     try {
       await drive.startOAuthFlow();
@@ -2285,6 +2296,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (await confirmFirstSync()) runSync();
     } catch (err: any) {
       showToast(err.message, "error");
+      showSignInProblem(err.message);
     }
   });
   $("btn-google-signout").addEventListener("click", () => {
@@ -2434,11 +2446,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (connected && user) {
       if (user.picture) img.src = user.picture;
       $("user-name").textContent = user.name;
-      $("user-email").textContent = user.email;
+      $("user-email").textContent = user.email; $("user-email").classList.remove("error-text");
     } else {
       img.src = "https://www.gstatic.com/images/branding/product/2x/drive_48dp.png";
       $("user-name").textContent = "Not Signed In";
-      $("user-email").textContent = "Connect with Google to import notes from Drive and save copies back.";
+      $("user-email").textContent = "Connect with Google to import notes from Drive and save copies back."; $("user-email").classList.remove("error-text");
     }
     $("btn-google-signin").classList.toggle("hidden", connected && !!user);
     $("btn-google-signout").classList.toggle("hidden", !(connected && user));

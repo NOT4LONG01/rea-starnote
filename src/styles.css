@@ -639,3 +639,5 @@ span.crumb { color: var(--text); cursor: default; }
 .tab.enter { animation: tab-in 220ms ease-out; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
 body.eink-mode *, body.eink-mode *::before, body.eink-mode *::after { animation: none !important; } /* E-Ink: every frame is a slow full refresh */
+
+.error-text { color: #ff9b9b; }

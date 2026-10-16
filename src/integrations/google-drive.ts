@@ -312,10 +312,15 @@ export class GoogleDriveService {
     const resp = await netFetch(TOKEN_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || !data.access_token) {
-      throw new Error(`Google sign-in failed: ${data.error_description || data.error || resp.status}`);
+      const why = `${data.error_description || data.error || resp.status}`;
+      // a Desktop-type client needs its secret: say which setting to fix rather than only Google's words
+      if (/client_secret|invalid_client|unauthorized_client/i.test(`${data.error} ${data.error_description}`)) {
+        throw new Error(`Google rejected the sign-in: the client secret is missing or wrong (${why}). Open the Drive dialog > Settings, check the Client ID and Client secret of your "Desktop app" client, then sign in again.`);
+      }
+      throw new Error(`Google sign-in failed: ${why}`);
     }
     this.storeTokens(data);
-    await this.refreshUserProfile();
+    if (!(await this.refreshUserProfile())) throw new Error("Signed in, but Google did not return your profile; Drive may still work. Try Sync now, or sign in again.");
   }
 
   private async refreshAccessToken(): Promise<void> {

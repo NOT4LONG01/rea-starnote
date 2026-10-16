@@ -117,6 +117,14 @@ await test("a token-endpoint failure is reported with Google's reason and stores
   await assert.rejects(svc.startOAuthFlow(), /OAuth client was not found/);
   assert.equal(svc.isConnected(), false);
 });
+await test("a missing or wrong client secret says which setting to fix, and stores nothing", async () => {
+  const { svc } = world();
+  const f = globalThis.__net.fetch;
+  globalThis.__net.fetch = async (u, i) => (String(u).includes("/token") ? json({ error: "invalid_request", error_description: "client_secret is missing." }, 400) : f(u, i));
+  await assert.rejects(svc.startOAuthFlow(), /client secret is missing or wrong[\s\S]*Settings/);
+  assert.equal(svc.isConnected(), false);
+});
+
 await test("no client id configured: a helpful message, and no browser opened", async () => {
   const { svc, w } = world(); svc.setClientId("");
   await assert.rejects(svc.startOAuthFlow(), /Desktop app/);
