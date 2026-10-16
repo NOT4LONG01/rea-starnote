@@ -13,7 +13,7 @@ const openNb = async (title) => { await ev(`[...document.querySelectorAll('#lib-
 const rename = async (title) => { await ev(`window.prompt = () => ${JSON.stringify(title)}`); await click("#btn-more"); await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Rename')).click()`); await sleep(400); };
 
 // a notebook opens in the grid; the switch shows only inside a notebook
-ok(!await ev(`document.getElementById('lib-view').classList.contains('hidden')`) && await ev(`document.querySelector('#lib-view .active').textContent`) === "Grid", "at the top level the switch shows the default for all notebooks (Grid)");
+ok(!await ev(`document.getElementById('lib-view').classList.contains('hidden')`) && await ev(`document.querySelector('#lib-view .active').textContent`) === "Grid", "All notes has its own Grid / Sections switch, on Grid");
 await notebook("Physics", ".card.create .card-thumb");
 ok(!await ev(`document.getElementById('lib-view').classList.contains('hidden')`) && await ev(`document.querySelector('#lib-view .active').textContent`) === "Grid", "inside a notebook: the switch, on Grid");
 await click('#lib-view button[data-v="sections"]');
