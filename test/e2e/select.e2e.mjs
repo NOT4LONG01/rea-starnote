@@ -61,6 +61,17 @@ await click('.side-item[data-filter="all"]');
 await ev(`${card("NB")}.querySelector('.card-thumb').click()`); await sleep(500);
 ok((await cardsT()).split(",").length === 4, "restored to their notebook");
 
+// press and hold on touch selects, and lifting the finger does not undo it (the card is rebuilt in between)
+await click("#btn-select"); await click("#btn-select"); // make sure selecting is off
+await ev(`(() => { const t = ${card("A")}.querySelector('.card-thumb'); t.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })); })()`); await sleep(700);
+await ev(`(() => { const t = ${card("A")}.querySelector('.card-thumb'); t.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' })); t.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); })()`); await sleep(400);
+ok((await bar()).startsWith("1 selected"), `press and hold selects and stays selected after lifting (${(await bar()).split("|")[0]})`);
+// Esc in the Move-to chooser closes the chooser only
+await barBtn("Move to…"); await sleep(300);
+await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }); await sleep(400);
+ok(await ev(`document.getElementById('move-modal').classList.contains('hidden')`) && (await bar()).startsWith("1 selected"), "Esc in Move to… closes the chooser and keeps the selection");
+await barBtn("Done");
+
 // Esc leaves selecting
 await click("#btn-select"); await tap("A");
 await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }); await sleep(400);
