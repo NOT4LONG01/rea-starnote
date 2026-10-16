@@ -62,6 +62,9 @@ await ev(`(() => {
 ok((await fmt(0)).template === t3 && await ev(`document.querySelectorAll('#pb-grid .pb-card').length`) === 3, "dragging page 3 before page 1 reorders the note");
 ok(await ev(`window.__reaBack()`) === true, "Back closes the page browser");
 await sleep(400);
+await click("#page-here"); await sleep(400);
+await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }); await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }); await sleep(400);
+ok(await ev(`document.getElementById('page-browser').classList.contains('hidden')`), "Esc closes the page browser too");
 await click("#btn-page-panel");
 
 // it stays open for the next note; an infinite canvas has one style for the whole sheet
