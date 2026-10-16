@@ -649,10 +649,11 @@ body.eink-mode *, body.eink-mode *::before, body.eink-mode *::after { animation:
 .card .sel-check, .page-row .sel-check { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff;
   background: rgba(0, 0, 0, 0.35); display: grid; place-items: center; color: #fff; }
 .card.selected .sel-check, .page-row.selected .sel-check { background: var(--accent); border-color: var(--accent); }
-.page-row { position: relative; }
-.page-row .sel-check { position: static; justify-self: end; }
+.page-row .pr-thumb { position: relative; }
+.page-row .sel-check { top: 4px; right: 4px; width: 20px; height: 20px; } /* on the thumbnail's corner, so the row keeps its height */
 #btn-select.on { color: var(--accent); }
 .sel-bar { position: sticky; bottom: 12px; z-index: 5; margin: 16px auto 0; width: fit-content; max-width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   padding: 8px 10px; border-radius: 14px; background: #1f1f1f; border: 1px solid #444; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); animation: rise-in 180ms ease-out; }
 .sel-bar .sel-count { padding: 0 8px; font-weight: 600; }
 .sel-bar .btn { white-space: nowrap; }
+.ask-card { width: min(420px, 100%); }

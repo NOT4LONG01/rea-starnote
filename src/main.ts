@@ -319,7 +319,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       elx.classList.toggle("selected", sel.ids.has(item.id));
       const check = el("span", "sel-check");
       check.innerHTML = sel.ids.has(item.id) ? '<i data-icon="check"></i>' : "";
-      (elx.querySelector(".card-thumb") ?? elx).appendChild(check);
+      (elx.querySelector(".card-thumb, .pr-thumb") ?? elx).appendChild(check);
     }
   }
   /** The bar of actions for what is selected (only actions that fit the selection are offered). */
@@ -487,8 +487,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     return true;
   }
 
+  /** A one-line text question in the app's own dialog (the webview's prompt() looks foreign: "JavaScript - tauri://localhost", a full-screen editor on Android). */
+  function askText(title: string, value = ""): Promise<string | null> {
+    return new Promise((resolve) => {
+      const modal = $("ask-modal"), input = $<HTMLInputElement>("ask-input");
+      $("ask-title").textContent = title;
+      input.value = value;
+      const done = (v: string | null) => { setShown(modal, false); input.onkeydown = null; resolve(v); };
+      $("ask-ok").onclick = () => done(input.value);
+      $("ask-cancel").onclick = () => done(null);
+      input.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); done(input.value); } else if (e.key === "Escape") { e.preventDefault(); done(null); } };
+      setShown(modal, true);
+      setTimeout(() => { input.focus(); input.select(); }, 30);
+    });
+  }
+
   async function renameItem(item: LibraryItem) {
-    const name = prompt(isFolder(item) ? "Rename notebook" : "Rename note", item.title)?.trim();
+    const name = (await askText(isFolder(item) ? "Rename notebook" : "Rename note", item.title))?.trim();
     if (!name || name === item.title) return;
     const fields = { title: name, modified: Date.now() };
     await library.update(item.id, fields);
@@ -643,6 +658,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ---------- OneNote-style view: a notebook's sub-notebooks are its sections (tabs), the notes in a section its pages
   const NB_COLORS = ["#d9534f", "#e8833a", "#d4a514", "#4caf50", "#2aa1b3", "#3f7fd9", "#8a63d2", "#c45ca2"];
   const DEFAULT_TAB = "#5b8db8";
+  /** A notebook's or section's colour: the one picked, else one of the palette chosen from its id, so tabs differ from the start and keep it. */
+  const colourOf = (f: LibraryItem | null) => {
+    if (!f) return DEFAULT_TAB;
+    if (f.color) return f.color;
+    let h = 0;
+    for (const ch of f.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return NB_COLORS[h % NB_COLORS.length];
+  };
   /** The notebook whose sections are shown: when a top-level notebook or one of its sections is open (deeper levels use the grid). */
   /**
    * Where the Grid / Sections switch applies: a top-level notebook or one of its sections ({nb}), or All notes itself ({nb: null}),
@@ -758,12 +781,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderCrumbs();
 
     const tabs = el("div", "sec-tabs");
-    tabs.style.setProperty("--c", cur?.color ?? DEFAULT_TAB);
+    tabs.style.setProperty("--c", colourOf(cur ?? nb));
     const open = (id: string | null) => (nb ? openFolder(id) : (ui.rootTab = id, renderLibrary())); // at All notes a tab only switches; inside a notebook it opens the section
     const tab = (f: LibraryItem | null, label: string) => {
       const id = f?.id ?? null;
       const b = el("button", `sec-tab${id === current ? " active" : ""}`);
-      b.style.setProperty("--c", f?.color ?? DEFAULT_TAB);
+      b.style.setProperty("--c", colourOf(f));
       b.appendChild(el("span", "", label));
       b.addEventListener("click", () => open(id));
       dropTarget(b, id);
@@ -852,7 +875,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const walk = (id: string, depth: number) => { for (const f of items.filter((i) => isFolder(i) && !i.trashed && i.parentId === id).sort(byPlace)) { groups.push({ folder: f, depth }); walk(f.id, depth + 1); } };
     walk(nb.id, 1);
     rail.innerHTML = "";
-    rail.style.setProperty("--c", nb.color ?? DEFAULT_TAB);
+    rail.style.setProperty("--c", colourOf(nb));
     const head = el("div", "rail-head");
     head.append(el("span", "", nb.title));
     const close = el("button", "icon-btn");
@@ -865,7 +888,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const pages = notesIn(folder.id);
       if (depth > 0) {
         const h = el("div", "rail-group", folder.title);
-        h.style.setProperty("--c", folder.color ?? DEFAULT_TAB);
+        h.style.setProperty("--c", colourOf(folder));
         h.style.paddingLeft = `${4 + (depth - 1) * 12}px`;
         list.appendChild(h);
       } else if (!pages.length) continue;
@@ -2660,6 +2683,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const open = (id: string) => !$(id).classList.contains("hidden") && !$(id).classList.contains("leaving");
     if (!pop.classList.contains("hidden") && !pop.classList.contains("leaving")) { closePopover(); return true; }
     if (open("move-modal")) { $("move-cancel").click(); return true; }
+    if (open("ask-modal")) { $("ask-cancel").click(); return true; }
     if (pageBrowserOpen()) { closePageBrowser(); return true; }
     if (open("page-modal")) { $("pm-cancel").click(); return true; }
     if (open("zotero-modal")) { setShown($("zotero-modal"), false); return true; }
