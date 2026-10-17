@@ -83,6 +83,24 @@
         </div>
       </div>
 
+      <div id="ai-modal" class="modal-overlay hidden">
+        <div class="modal-card pm-card" role="dialog" aria-labelledby="ai-title">
+          <div class="modal-header"><div class="modal-title"><i data-icon="sigma"></i><h2 id="ai-title">AI settings (OpenRouter)</h2></div>
+            <button id="ai-close" class="icon-btn" title="Close"><i data-icon="close"></i></button></div>
+          <div class="modal-body ai-body">
+            <label class="pm-label" for="ai-key">OpenRouter API key</label>
+            <input id="ai-key" class="pm-name" type="password" placeholder="sk-or-..." autocomplete="off" spellcheck="false" />
+            <p class="pm-note">Create one at openrouter.ai (Keys). It stays on this device only. Free models work with a free key.</p>
+            <label class="pm-label" for="ai-model">Model (it must read images)</label>
+            <select id="ai-model" class="pm-name"></select>
+            <input id="ai-model-id" class="pm-name" type="text" placeholder="or type a model id, e.g. provider/model:free" autocomplete="off" spellcheck="false" />
+            <p id="ai-status" class="pm-note"></p>
+            <p class="pm-note">What is sent: only the handwriting you select, when you press Convert to LaTeX, to OpenRouter and the model's provider.</p>
+          </div>
+          <div class="pm-actions"><button id="ai-forget" class="btn btn-danger">Remove key</button><span class="spacer"></span><button id="ai-cancel" class="btn">Cancel</button><button id="ai-save" class="btn btn-primary">Save</button></div>
+        </div>
+      </div>
+
       <div id="move-modal" class="modal-overlay hidden">
         <div class="modal-card pm-card">
           <div class="modal-header">
@@ -130,6 +148,7 @@
           <button id="tool-pan" class="icon-btn tool" title="Hand" aria-label="Hand"><i data-icon="hand"></i></button>
           <span id="sel-actions" class="sel-actions">
             <button id="sel-copy" class="icon-btn hidden" title="Copy the selection (Ctrl+C)"><i data-icon="copy"></i></button>
+            <button id="sel-latex" class="icon-btn hidden" title="Convert the selected handwriting to LaTeX (AI, through your OpenRouter key)"><i data-icon="sigma"></i></button>
             <button id="sel-delete" class="icon-btn hidden" title="Delete the selection (Delete)"><i data-icon="trash"></i></button>
             <button id="sel-paste" class="icon-btn hidden" title="Paste drawings (Ctrl+V)"><i data-icon="paste"></i></button>
           </span>

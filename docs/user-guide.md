@@ -33,6 +33,11 @@ the top lists them.
   the pen sets pressure or opacity and a custom color. **Pen & touch settings** covers stylus-only drawing.
 - **Pen vs finger:** the stylus draws; fingers pan and pinch to zoom (the hand tool lets a finger drag the page).
 - **Lasso** selects strokes to move, recolor, copy and paste. **Text** boxes take plain text and LaTeX math (`$$...$$`).
+- **Convert to LaTeX** (Σ, shown while ink is selected): an AI model reads the selected handwriting and the Math panel opens
+  with its LaTeX; fix it if needed, then Done replaces the ink with the formula (Undo brings the ink back, Cancel keeps it).
+  It needs an [OpenRouter](https://openrouter.ai) key (models marked *Free* cost nothing; they have daily limits): *More > AI
+  settings*, paste the key, pick a model that reads images. The key stays on this device. Only the selection is sent, as a
+  picture, to OpenRouter and that model's provider, and only when you press Σ.
 - **Pages:** the pages menu adds, deletes, moves pages and changes their format; the add-page button at the end adds one.
 - **Find in note** (the search button, or Ctrl+F): finds a word in the note's typed text, and in your handwriting where the
   device can read it (Windows with its handwriting language installed, Android; not Linux or the browser). The handwriting is

@@ -3,7 +3,7 @@ import { SHAPE_KINDS, ShapeKind } from "./model/shapes";
 import { isMathText, latexOf, wrapLatex, renderMath } from "./model/math";
 import { PAPERS, TEMPLATES, SPACINGS, DEFAULT_FORMAT, DEFAULT_SPACING, NoteKind, PageFormat, PageTemplate, newCanvasTile, newPageTile, relayout, pageFormat, paperOf } from "./model/pages";
 import { CanvasRenderer, ViewSnapshot } from "./render/canvas-renderer";
-import { loadStarNoteArchive, StarNoteDocument, ParsedTextBox } from "./model/note-loader";
+import { loadStarNoteArchive, StarNoteDocument, ParsedTextBox, ParsedStroke } from "./model/note-loader";
 import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serializer";
 import { GoogleDriveService, GoogleDriveFile } from "./integrations/google-drive";
 import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
@@ -15,6 +15,7 @@ import { isDesktopApp } from "./integrations/net";
 import { syncLibrary } from "./data/sync";
 import { ZoteroClient, ZoteroItem, ZoteroPdf, ZoteroCollection } from "./integrations/zotero";
 import { exportAnnotatedPdf, safeFileName } from "./render/pdf-export";
+import { aiKey, aiModel, setAiKey, setAiModel, aiReady, visionModels, readMath } from "./integrations/ai";
 import JSZip from "jszip";
 
 // ---------------------------------------------------------------- icons
@@ -55,6 +56,7 @@ const ICONS: Record<string, string> = {
   lasso: '<path d="M12 4c-5 0-9 2.4-9 5.5S7 15 12 15s9-2.4 9-5.5S17 4 12 4z" stroke-dasharray="3 2.4"/><path d="M9 15c-.8 2.6.6 5 3 5"/>',
   paste: '<rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V4a1 1 0 011-1h4a1 1 0 011 1v1M9 12h6M9 16h6"/>',
   pagecfg: '<path d="M6 3h8l4 4v6"/><path d="M6 3v18h7"/><circle cx="18" cy="18" r="2.5"/><path d="M18 13.5v2M18 20.5v2M13.5 18h2M20.5 18h2"/>',
+  sigma: '<path d="M18 5H6l6 7-6 7h12"/>',
   select: '<rect x="3" y="3" width="8" height="8" rx="2"/><path d="M4.8 7l1.6 1.6L9.5 5.4"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/>',
   quick: '<path d="M13 3L4 14h7l-1 7 9-11h-7z"/>',
   pages: '<rect x="3" y="4" width="6" height="16" rx="1.5"/><path d="M12 7h9M12 12h9M12 17h6"/>',
@@ -1863,6 +1865,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // at the place it will end up. Esc / Ctrl+Enter / Done commit (a formula with an error is refused); Cancel discards.
   const te = {
     at: { x: 0, y: 0 }, box: null as ParsedTextBox | null, size: 40, color: "#000000", timer: 0, seq: 0, open: false,
+    replacing: [] as ParsedStroke[], // Convert to LaTeX: the ink this formula replaces when it is committed (one undo step)
     el: $("text-editor"), input: $<HTMLTextAreaElement>("te-input"), error: $("te-error"), snips: $("te-snips"),
   };
   for (const [label, tex] of MATH_SNIPPETS) {
@@ -1877,7 +1880,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     te.snips.appendChild(b);
   }
   function closeTextEditor() {
-    te.open = false; setShown(te.el, false); te.box = null; te.seq++;
+    te.open = false; setShown(te.el, false); te.box = null; te.seq++; te.replacing = [];
     renderer.setTextDraft(null);
   }
   /** Typeset the source and show it on the page; an error keeps the last good picture and is written under the code. */
@@ -1936,8 +1939,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       return true;
     }
     const box = te.box;
+    const replacing = te.replacing; // read before closing: closing forgets it
     closeTextEditor();
-    if (renderer.commitTextBox(box, { text: wrapLatex(raw), color: te.color, fontSize: te.size, size: { width: r.width, height: r.height } }, te.at)) pref.set("sn.mathsize", String(te.size));
+    if (renderer.commitTextBox(box, { text: wrapLatex(raw), color: te.color, fontSize: te.size, size: { width: r.width, height: r.height } }, te.at, replacing)) pref.set("sn.mathsize", String(te.size));
     return true;
   }
   const resizeMath = (d: number) => { te.size = Math.max(20, Math.min(160, te.size + d)); renderer.updateTextDraft({ size: te.size }); refreshPreview(); };
@@ -2029,10 +2033,54 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("te-bigger").addEventListener("click", () => resizeMath(8));
 
   // ---------- selection: copy / delete / paste buttons
+  // ---------- Convert to LaTeX: the selected handwriting goes to an AI model (OpenRouter, the user's key) and comes back as a
+  // formula in the Math panel, where it can be checked; Done swaps the ink for it (one undo step), Cancel keeps the ink
+  async function openAiSettings(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const modal = $("ai-modal"), key = $<HTMLInputElement>("ai-key"), sel = $<HTMLSelectElement>("ai-model"), custom = $<HTMLInputElement>("ai-model-id"), status = $("ai-status");
+      key.value = aiKey(); custom.value = ""; status.textContent = "Loading the models that can read images…";
+      sel.innerHTML = "";
+      const current = aiModel();
+      if (current) sel.appendChild(new Option(current, current, true, true));
+      visionModels().then((list) => {
+        sel.innerHTML = "";
+        for (const m of list) sel.appendChild(new Option(`${m.free ? "Free · " : ""}${m.name}`, m.id, false, m.id === current));
+        if (current && !list.some((m) => m.id === current)) sel.prepend(new Option(current, current, true, true));
+        status.textContent = `${list.filter((m) => m.free).length} free and ${list.filter((m) => !m.free).length} paid models read images. Free ones are listed first.`;
+      }).catch((e) => { status.textContent = `Could not load the model list (${e.message}); you can type a model id.`; });
+      const done = (ok: boolean) => { setShown(modal, false); resolve(ok); };
+      $("ai-save").onclick = () => { setAiKey(key.value); setAiModel(custom.value.trim() || sel.value); done(aiReady()); };
+      $("ai-cancel").onclick = $("ai-close").onclick = () => done(false);
+      $("ai-forget").onclick = () => { setAiKey(""); key.value = ""; showToast("The OpenRouter key was removed from this device", "info"); };
+      setShown(modal, true);
+      setTimeout(() => key.focus(), 30);
+    });
+  }
+  async function convertSelection() {
+    const strokes = renderer.selectedStrokes(), box = renderer.selectionBounds(), png = renderer.selectionImage();
+    if (!strokes.length || !box || !png) return;
+    if (!aiReady() && !(await openAiSettings())) return;
+    if (pref.get("sn.ai.ok", "") !== "1") {
+      if (!confirm("Convert to LaTeX sends the selected handwriting (as a picture) to OpenRouter and the model you chose, using your key.\n\nSend it?")) return;
+      pref.set("sn.ai.ok", "1");
+    }
+    showToast("Reading the handwriting…", "info");
+    let latex: string;
+    try { latex = await readMath(png); } catch (e: any) { showToast(e.message, "error"); return; }
+    // the Math panel opens where the ink is, with the formula to check; Done replaces the ink
+    const host = $("canvas-container").getBoundingClientRect();
+    openTextEditor({ x: box.l, y: box.t, clientX: host.left + host.width / 2, clientY: host.top + host.height / 2, box: null });
+    te.replacing = strokes;
+    te.input.value = latex;
+    void refreshPreview();
+  }
+  $("sel-latex").addEventListener("click", () => void convertSelection());
+
   const syncSelectionButtons = () => {
     const sel = renderer.hasSelection();
     $("sel-copy").classList.toggle("hidden", !sel);
     $("sel-delete").classList.toggle("hidden", !sel);
+    $("sel-latex").classList.toggle("hidden", !sel);
     $("sel-paste").classList.toggle("hidden", !renderer.hasClipboard());
   };
   renderer.onSelectionChange = () => { syncSelectionButtons(); renderToolOptions(); };
@@ -2098,6 +2146,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           downloadBlob(new Blob([svg], { type: "image/svg+xml" }), `${s.item.title}.svg`);
         }),
         popItem("Export annotated PDF", "download", () => exportPdfDownload(s)),
+        popItem("AI settings (OpenRouter)…", "sigma", () => void openAiSettings()),
         ...(zotero.isConnected() ? [popItem("Save annotated PDF to Zotero", "book", () => sendPdfToZotero(s))] : []),
         popItem("Google Drive…", "cloud", openDriveModal)
       );
@@ -2779,6 +2828,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!pop.classList.contains("hidden") && !pop.classList.contains("leaving")) { closePopover(); return true; }
     if (open("move-modal")) { $("move-cancel").click(); return true; }
     if (open("ask-modal")) { $("ask-cancel").click(); return true; }
+    if (open("ai-modal")) { $("ai-cancel").click(); return true; }
     if (pageBrowserOpen()) { closePageBrowser(); return true; }
     if (open("page-modal")) { $("pm-cancel").click(); return true; }
     if (open("zotero-modal")) { setShown($("zotero-modal"), false); return true; }
