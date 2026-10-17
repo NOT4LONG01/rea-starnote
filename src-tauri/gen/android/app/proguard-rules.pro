@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# ML Kit (handwriting search) brings WorkManager, which opens its Room database by the generated class's name at startup.
+# Without this, shrinking drops WorkDatabase_Impl and the release app crashes before its window opens (qa-21 phone).
+-keep class * extends androidx.room.RoomDatabase { <init>(); }
