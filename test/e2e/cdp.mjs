@@ -15,6 +15,7 @@ async function up() { try { return (await fetch(URL_APP)).ok; } catch { return f
 export async function launch({ width = 1280, height = 800, dpr = 1, query = "" } = {}) {
   const children = [];
   process.on("exit", () => { for (const c of children) c.kill(); }); // registered first: even a failed start leaves no dev server or Chrome behind
+  for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(128 + (sig === "SIGINT" ? 2 : 15))); // Ctrl+C or `timeout` runs the cleanup too
   if (!(await up())) {
     const vite = spawn(process.execPath, [join(root, "node_modules/vite/bin/vite.js"), "--port", "1420", "--strictPort"], { cwd: root, stdio: "ignore" }); // not through npx: killing npx would leave vite running
     children.push(vite);
