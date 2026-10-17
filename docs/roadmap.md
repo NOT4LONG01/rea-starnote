@@ -11,7 +11,9 @@
 (Windows' own ink recognizer, Google ML Kit on Android; none on Linux and the web). Each match jumps to its page and is highlighted.
 Recognized text is kept by the app, never written into the `.note`. Built on the branch: line grouping and matching (unit tests),
 the Windows recognizer (type-checked for Windows), the Android bridge (builds), the stored index, the Find bar (e2e test with a
-stand-in recognizer). Next: QA on Windows (the owner's PC has the Korean recognizer) and on the phone, then merge into `main`.
+stand-in recognizer). On the owner's OneNote pages (2026-10-17, mostly English) the English (US)
+recognizer read every line of 16 pages, 0 failures: prose comes out as readable words, math as noisy fragments (no recognizer
+reads math; that is what Convert to LaTeX is for). Next: QA of the Find bar on Windows and on the phone, then merge into `main`.
 
 ## Later: OneNote ink importer
 Turn existing OneNote notes into REA-StarNote notes with their ink as real strokes (so handwriting search and the assistant can
