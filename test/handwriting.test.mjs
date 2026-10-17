@@ -49,6 +49,11 @@ test("on close lines, a superscript joins its own line, not the one above", () =
   const lines = h.groupIntoLines([letter(100, 100), letter(150, 100), letter(100, 180), letter(150, 180), sup]);
   assert.deepEqual(lines.map((l) => l.strokes.length), [2, 3]);
 });
+test("small writing away from the text (a diagram label) stays one line, not one line per stroke", () => {
+  const label = [letter(600, 400, 20, 25), letter(660, 404, 20, 25), letter(720, 398, 20, 25)]; // spaced wider than its height
+  const lines = h.groupIntoLines([letter(100, 100), letter(150, 100), letter(200, 100), letter(100, 200), letter(150, 200), ...label]);
+  assert.deepEqual(lines.map((l) => l.strokes.length), [3, 2, 3]);
+});
 test("the fingerprint changes when the ink does, not otherwise", () => {
   const a = [letter(100, 100)], b = [letter(100, 100)], c = [letter(100, 100), letter(200, 100)];
   assert.equal(h.inkSignature(a), h.inkSignature(b));

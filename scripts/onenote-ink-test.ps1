@@ -86,27 +86,33 @@ function Group-Lines($strokes) {
   if (-not $items.Count) { return , @() }
   $hs = @($items | ForEach-Object { $_.b - $_.t } | Sort-Object)
   $typical = $hs[[math]::Floor($hs.Count / 2)]
-  if (-not $typical) { $typical = 1 }
-  foreach ($x in $items) { $x | Add-Member -NotePropertyName size -NotePropertyValue ([math]::Max($x.b - $x.t, $x.r - $x.l) / $typical) }
-  # full-size strokes make the lines; then scripts (x2, a1) and then dots and accents join the nearest line
-  $order = @(@($items | Where-Object { $_.size -ge 0.7 } | Sort-Object mid) + @($items | Where-Object { $_.size -lt 0.7 } | Sort-Object size -Descending))
+  $isSmall = { param($i) [math]::Max($i.b - $i.t, $i.r - $i.l) -lt 0.35 * $typical }
+  $order = @(@($items | Where-Object { -not (& $isSmall $_) } | Sort-Object mid) + @($items | Where-Object { & $isSmall $_ }))
   $rows = New-Object System.Collections.ArrayList
   foreach ($it in $order) {
-    $small = $it.size -lt 0.7
-    $row = $null; $best = [double]::MaxValue
+    $tiny = & $isSmall $it
+    $row = $null
     foreach ($r in $rows) {
       $h = $r.b - $r.t; $ov = [math]::Min($r.b, $it.b) - [math]::Max($r.t, $it.t)
-      if ($small) {
-        $fits = ($it.mid -ge $r.t - $h * 0.6) -and ($it.mid -le $r.b + $h * 0.6) -and ($it.r -ge $r.l - $h) -and ($it.l -le $r.r + $h)
-        $away = [math]::Max(0, [math]::Max($r.t - $it.mid, $it.mid - $r.b))   # the nearest line wins
-        if ($fits -and $away -lt $best) { $row = $r; $best = $away }
-      } else {
-        $fits = (($it.mid -ge $r.t - $h * 0.15) -and ($it.mid -le $r.b + $h * 0.15)) -or ($ov -gt 0.5 * [math]::Min($h, $it.b - $it.t))
-        if ($fits) { $row = $r; break }
-      }
+      if ($tiny) { $fits = ($it.mid -ge $r.t - $h * 0.6) -and ($it.mid -le $r.b + $h * 0.3) -and ($it.r -ge $r.l - $h) -and ($it.l -le $r.r + $h) }
+      else { $fits = (($it.mid -ge $r.t - $h * 0.15) -and ($it.mid -le $r.b + $h * 0.15)) -or ($ov -gt 0.5 * [math]::Min($h, $it.b - $it.t)) }
+      if ($fits) { $row = $r; break }
     }
     if ($row) { [void]$row.items.Add($it); $row.l = [math]::Min($row.l, $it.l); $row.t = [math]::Min($row.t, $it.t); $row.r = [math]::Max($row.r, $it.r); $row.b = [math]::Max($row.b, $it.b) }
     else { $n = [pscustomobject]@{ items = (New-Object System.Collections.ArrayList); l = $it.l; t = $it.t; r = $it.r; b = $it.b }; [void]$n.items.Add($it); [void]$rows.Add($n) }
+  }
+  # short rows (x2, a1 written above or below the line) join the nearest normal line they touch, shortest first (as the app)
+  foreach ($r in @($rows | Where-Object { ($_.b - $_.t) -lt 0.7 * $typical } | Sort-Object { $_.b - $_.t })) {
+    $m = ($r.t + $r.b) / 2; $to = $null; $best = [double]::MaxValue
+    foreach ($o in $rows) {
+      $oh = $o.b - $o.t
+      if ($o -eq $r -or $oh -lt 0.7 * $typical) { continue }
+      if (($m -ge $o.t - 0.6 * $oh) -and ($m -le $o.b + 0.6 * $oh) -and ($r.r -ge $o.l - $oh) -and ($r.l -le $o.r + $oh)) {
+        $away = [math]::Max(0, [math]::Max($o.t - $m, $m - $o.b))
+        if ($away -lt $best) { $to = $o; $best = $away }
+      }
+    }
+    if ($to) { foreach ($x in $r.items) { [void]$to.items.Add($x) }; $to.l = [math]::Min($to.l, $r.l); $to.t = [math]::Min($to.t, $r.t); $to.r = [math]::Max($to.r, $r.r); $to.b = [math]::Max($to.b, $r.b); $rows.Remove($r) }
   }
   $lines = New-Object System.Collections.ArrayList
   foreach ($r in $rows) {
