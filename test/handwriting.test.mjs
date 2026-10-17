@@ -39,6 +39,16 @@ test("a dot above a letter stays in its line", () => {
   const lines = h.groupIntoLines([letter(100, 100), letter(150, 100), dot]);
   assert.equal(lines.length, 1); assert.equal(lines[0].strokes.length, 3);
 });
+test("superscripts and subscripts stay in their line (x², a₁), not lines of their own", () => {
+  const sup = letter(145, 75, 20, 22), sub = letter(195, 140, 20, 22);
+  const lines = h.groupIntoLines([letter(100, 100), letter(150, 100), sup, letter(170, 100), sub]);
+  assert.equal(lines.length, 1, lines.map((l) => l.strokes.length).join(","));
+});
+test("on close lines, a superscript joins its own line, not the one above", () => {
+  const sup = letter(145, 165, 20, 22); // just above line 2 (180..230), 15 below line 1 (100..150)
+  const lines = h.groupIntoLines([letter(100, 100), letter(150, 100), letter(100, 180), letter(150, 180), sup]);
+  assert.deepEqual(lines.map((l) => l.strokes.length), [2, 3]);
+});
 test("the fingerprint changes when the ink does, not otherwise", () => {
   const a = [letter(100, 100)], b = [letter(100, 100)], c = [letter(100, 100), letter(200, 100)];
   assert.equal(h.inkSignature(a), h.inkSignature(b));

@@ -24,25 +24,27 @@ const union = (a: Box, b: Box): Box => ({ l: Math.min(a.l, b.l), t: Math.min(a.t
 /**
  * Cuts ink into lines the way a reader would: strokes that overlap vertically belong to one line; a wide horizontal gap
  * (more than `gapFactor` line heights) starts a new piece, so two columns or a margin note are not glued together.
- * Dots and accents (tiny strokes) join the line they sit in or on.
+ * Dots, accents, superscripts and subscripts (strokes under 0.7 of the usual height) join the nearest line they sit in, on or
+ * just under. ponytail: a whole line of very small writing within ~half a line of another is merged into it; per-line size if that shows up.
  */
 export function groupIntoLines(strokes: InkStroke[], gapFactor = 3, maxStrokes = 300): InkLine[] {
   const items = strokes.filter((s) => s.points.length).map((s) => ({ s, box: boxOf(s.points) }));
   const heights = items.map((i) => i.box.b - i.box.t).sort((a, b) => a - b);
   const typical = heights[Math.floor(heights.length / 2)] ?? 0;
-  const small = (i: (typeof items)[number]) => Math.max(i.box.b - i.box.t, i.box.r - i.box.l) < 0.35 * typical;
-  // full-size strokes make the lines; dots, accents and short marks then join the line they sit in, on or just above
+  const size = (i: (typeof items)[number]) => Math.max(i.box.b - i.box.t, i.box.r - i.box.l) / (typical || 1);
+  // full-size strokes make the lines; then scripts (x², a₁) and then dots and accents join the nearest line
   const mid = (i: (typeof items)[number]) => (i.box.t + i.box.b) / 2;
-  const order = [...items.filter((i) => !small(i)).sort((a, b) => mid(a) - mid(b)), ...items.filter(small)];
+  const order = [...items.filter((i) => size(i) >= 0.7).sort((a, b) => mid(a) - mid(b)), ...items.filter((i) => size(i) < 0.7).sort((a, b) => size(b) - size(a))];
   const rows: { box: Box; items: typeof items }[] = [];
   for (const it of order) {
-    const m = mid(it), tiny = small(it);
+    const m = mid(it), small = size(it) < 0.7;
     const fits = (r: (typeof rows)[number]) => {
       const h = r.box.b - r.box.t, overlap = Math.min(r.box.b, it.box.b) - Math.max(r.box.t, it.box.t);
-      if (tiny) return m >= r.box.t - h * 0.6 && m <= r.box.b + h * 0.3 && it.box.r >= r.box.l - h && it.box.l <= r.box.r + h;
+      if (small) return m >= r.box.t - h * 0.6 && m <= r.box.b + h * 0.6 && it.box.r >= r.box.l - h && it.box.l <= r.box.r + h;
       return (m >= r.box.t - h * 0.15 && m <= r.box.b + h * 0.15) || overlap > 0.5 * Math.min(h, it.box.b - it.box.t);
     };
-    const row = rows.find(fits);
+    const away = (r: (typeof rows)[number]) => Math.max(0, r.box.t - m, m - r.box.b); // 0 inside the line
+    const row = small ? rows.filter(fits).sort((a, b) => away(a) - away(b))[0] : rows.find(fits);
     if (row) { row.items.push(it); row.box = union(row.box, it.box); } else rows.push({ box: { ...it.box }, items: [it] });
   }
   const out: InkLine[] = [];
