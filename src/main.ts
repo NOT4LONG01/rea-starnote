@@ -5,7 +5,7 @@ import { PAPERS, TEMPLATES, SPACINGS, DEFAULT_FORMAT, DEFAULT_SPACING, NoteKind,
 import { CanvasRenderer, ViewSnapshot } from "./render/canvas-renderer";
 import { loadStarNoteArchive, StarNoteDocument, ParsedTextBox, ParsedStroke } from "./model/note-loader";
 import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serializer";
-import { GoogleDriveService, GoogleDriveFile } from "./integrations/google-drive";
+import { GoogleDriveService, GoogleDriveFile, androidSignIn } from "./integrations/google-drive";
 import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
 import { library, renderThumbnail, renderPageThumbnail, LibraryItem, InkIndex } from "./data/library";
 import { groupIntoLines, inkSignature, findIn, platformRecognizer, inkLanguage, Box } from "./integrations/handwriting";
@@ -2669,6 +2669,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("cfg-secret-group").classList.remove("hidden");
     $("cfg-client-id-label").textContent = "Google OAuth 2.0 Client ID (type: Desktop app):";
     $("cfg-client-id-hint").textContent = "Enable the Drive API and add yourself as a Test user. This must be a Desktop app client, not the Web client the browser version uses.";
+  }
+  if (androidSignIn()) { // the phone signs in with its own Google account: nothing to type here
+    $("cfg-origin-group").classList.add("hidden");
+    $("cfg-secret-group").classList.add("hidden");
+    cfgClientId.classList.add("hidden");
+    $("cfg-client-id-label").textContent = "Google sign-in on Android";
+    $("cfg-client-id-hint").textContent = "Uses this phone's Google account; no client ID or secret. Your Google Cloud project needs an OAuth client of type Android for com.starnote.interop with the app's SHA-1 (user guide, Google Drive).";
   }
   const cfgSecret = $<HTMLInputElement>("cfg-client-secret");
   cfgSecret.value = drive.getClientSecret();

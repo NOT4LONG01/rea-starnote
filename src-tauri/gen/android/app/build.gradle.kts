@@ -77,6 +77,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     // handwriting search: Google ML Kit on-device ink recognition (a language model is fetched once, then it works offline)
     implementation("com.google.mlkit:digital-ink-recognition:18.1.0")
+    implementation("com.google.android.gms:play-services-auth:21.2.0") // Google sign-in with the phone's account (Drive)
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
