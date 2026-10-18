@@ -225,4 +225,50 @@ await test("the Drive sync adapter renews too (it goes through the same token pa
   assert.ok(w.apiReqs.slice(-2).every((r) => r.auth === "Bearer AT2"));
 });
 
+console.log("android (the phone's Google account through Play Services)");
+/** A fake Android bridge: `answer(interactive)` returns a token, or throws a message like Play Services' errors. */
+function phone(answer) {
+  const calls = [];
+  globalThis.StarNoteAndroid = { googleAuthorize: (id, scopes, interactive) => { calls.push({ scopes, interactive }); setTimeout(() => { try { globalThis.__gAuthDone(id, answer(interactive)); } catch (e) { globalThis.__gAuthFail(id, e.message); } }); } };
+  return calls;
+}
+await test("sign-in asks Play Services (with consent allowed), no client ID, browser or token endpoint", async () => {
+  const { svc, w } = world();
+  w.store.delete("starnote_gdrive_desktop_client_id");
+  const calls = phone(() => "PHONE1");
+  await svc.startOAuthFlow();
+  assert.deepEqual(calls.map((c) => c.interactive), [true]);
+  assert.ok(calls[0].scopes.includes("https://www.googleapis.com/auth/drive.file"));
+  assert.equal(w.opened.length + w.tokenReqs.length + w.invokes.length, 0);
+  assert.equal(svc.isConnected(), true);
+  assert.equal(w.apiReqs[0].auth, "Bearer PHONE1");
+});
+await test("an expired phone token is renewed silently (no consent screen), and several calls share one renewal", async () => {
+  const { svc, w } = world();
+  let n = 0;
+  const calls = phone(() => `PHONE${++n}`);
+  await svc.startOAuthFlow();
+  expire(w);
+  await Promise.all([svc.listNoteFiles(), svc.listNoteFiles()]);
+  assert.deepEqual(calls.map((c) => c.interactive), [true, false]);
+  assert.ok(w.apiReqs.filter((r) => r.url.includes("/drive/v3/files")).every((r) => r.auth === "Bearer PHONE2"));
+});
+await test("if silent renewal fails (access removed), the app signs out with a clear message", async () => {
+  const { svc, w } = world();
+  phone((interactive) => { if (!interactive) throw new Error("consent needed"); return "PHONE1"; });
+  await svc.startOAuthFlow();
+  expire(w);
+  await assert.rejects(svc.listNoteFiles(), /session expired/);
+  assert.equal(svc.isConnected(), false);
+});
+await test("no Android client in the Cloud project (DEVELOPER_ERROR) says what to add; cancelling says cancelled", async () => {
+  const { svc } = world();
+  phone(() => { throw new Error("10: Developer console is not set up correctly."); });
+  await assert.rejects(svc.startOAuthFlow(), /OAuth client of type Android.*com\.starnote\.interop.*SHA-1/);
+  phone(() => { throw new Error("cancelled"); });
+  await assert.rejects(svc.startOAuthFlow(), /cancelled/);
+  assert.equal(svc.isConnected(), false);
+});
+delete globalThis.StarNoteAndroid;
+
 console.log(`\n${passed} tests passed`);
