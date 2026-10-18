@@ -1230,6 +1230,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       void saveSession(active, true);
     }, AUTOSAVE_MS);
   }
+  // Palm rejection: on by default on devices with a pen (from the first pen stroke), so a finger only pans there; a device
+  // that never saw a pen keeps drawing with touch. Choosing it in Touch & pen wins and is kept.
+  renderer.stylusOnly = pref.get("sn.stylus", "") ? pref.get("sn.stylus", "") === "1" : pref.get("sn.penseen", "") === "1";
+  renderer.onPen = () => {
+    if (pref.get("sn.penseen", "") === "1") return;
+    pref.set("sn.penseen", "1");
+    if (!pref.get("sn.stylus", "")) renderer.stylusOnly = true;
+  };
   renderer.onChange = () => {
     if (!active) return;
     renderEditorChrome();
@@ -1718,15 +1726,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     const pages = renderer.inkByPage();
     for (const tag of Object.keys(idx.pages)) if (!pages.some((p) => p.tag === tag)) delete idx.pages[tag]; // a page without ink now
     const todo = pages.filter((p) => idx!.pages[p.tag]?.sig !== inkSignature(p.strokes));
+    const langs = lang === "both" ? ["en", "ko"] : [lang], notes = new Set<string>();
     let n = 0;
     for (const p of todo) {
       if (run !== find.run) return;
       findStatus.textContent = `Reading handwriting… page ${++n} of ${todo.length}`;
       const lines = groupIntoLines(p.strokes);
+      const ink = lines.map((l) => l.strokes.map((st) => st.points.map((q) => [Math.round(q.x), Math.round(q.y)] as [number, number])));
       try {
-        const texts = await rec(lines.map((l) => l.strokes.map((st) => st.points.map((q) => [Math.round(q.x), Math.round(q.y)] as [number, number]))), lang);
-        if (run !== find.run) return;
-        idx.pages[p.tag] = { sig: inkSignature(p.strokes), lines: lines.map((l, i) => ({ text: texts[i] ?? "", box: l.box })).filter((l) => l.text) };
+        const read: InkIndex["pages"][string]["lines"] = [];
+        for (const L of langs) { // each line in every language: the search looks in all of them
+          const texts = await rec(ink, L);
+          if (run !== find.run) return;
+          if (handwriting.lastRecognizerNote) notes.add(handwriting.lastRecognizerNote);
+          lines.forEach((l, i) => { if (texts[i]) read.push({ text: texts[i]!, lang: L, box: l.box }); });
+        }
+        idx.pages[p.tag] = { sig: inkSignature(p.strokes), lines: read };
       } catch (e: any) {
         const m = String(e?.message ?? e);
         findStatus.textContent = /unavailable/i.test(m) ? m.replace(/^unavailable:\s*/i, "Handwriting can't be read here: ") + " Finding typed text only." : `Could not read handwriting: ${m}`;
@@ -1735,8 +1750,25 @@ document.addEventListener("DOMContentLoaded", async () => {
       runFind(false);
     }
     if (todo.length) await library.putInk(id, idx).catch(() => undefined); // kept by the app (never in the .note), reused next time
-    const read = Object.values(idx.pages).reduce((k, pg) => k + pg.lines.length, 0);
-    findStatus.textContent = (read ? `Handwriting read (${lang === "ko" ? "한국어" : "English"}): ${read} line${read === 1 ? "" : "s"}` : "No handwriting on these pages.") + (handwriting.lastRecognizerNote ? ` ${handwriting.lastRecognizerNote}` : "");
+    const read = Object.values(idx.pages).reduce((k, pg) => k + new Set(pg.lines.map((l) => `${l.box.t},${l.box.l}`)).size, 0);
+    const name = lang === "both" ? "한국어 + English" : lang === "ko" ? "한국어" : "English";
+    findStatus.textContent = (read ? `Handwriting read (${name}): ${read} line${read === 1 ? "" : "s"}` : "No handwriting on these pages.") + (notes.size ? ` ${[...notes].join(" ")}` : "");
+    renderFindRead();
+  }
+  /** "What was read": the recognizers' text per line, page by page, so a miss can be told from a misreading. */
+  function renderFindRead() {
+    const list = $("find-read-list"), order = renderer.pageOrder(), pages = Object.entries(find.index?.pages ?? {}).filter(([, pg]) => pg.lines.length);
+    list.replaceChildren();
+    $("find-read").classList.toggle("hidden", !pages.length);
+    pages.sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
+    for (const [tag, pg] of pages) {
+      list.append(el("div", "fr-page", `Page ${order.indexOf(tag) + 1}`));
+      for (const l of [...pg.lines].sort((a, b) => a.box.t - b.box.t || a.box.l - b.box.l)) {
+        const row = el("div", "fr-line");
+        row.append(el("span", "fr-lang", l.lang ?? ""), document.createTextNode(l.text));
+        list.append(row);
+      }
+    }
   }
   /** Finds the query in typed text and in the handwriting read so far; `jump` moves to the first hit. */
   function runFind(jump: boolean) {
@@ -1747,7 +1779,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       for (const [tag, pg] of Object.entries(find.noteId === active?.item.id ? find.index?.pages ?? {} : {})) {
         for (const line of pg.lines) for (const m of findIn(line.text, q)) {
           const w = line.box.r - line.box.l; // narrow the mark to the part of the line that matched
-          hits.push({ page: tag, box: { l: line.box.l + w * m.from, r: line.box.l + w * m.to, t: line.box.t, b: line.box.b } });
+          const box = { l: line.box.l + w * m.from, r: line.box.l + w * m.to, t: line.box.t, b: line.box.b };
+          // the same word read in both languages is one hit: skip a mark that mostly overlaps one already there
+          const dup = hits.some((h) => h.page === tag && h.box.t === box.t && Math.min(h.box.r, box.r) - Math.max(h.box.l, box.l) > 0.5 * Math.min(h.box.r - h.box.l, box.r - box.l));
+          if (!dup) hits.push({ page: tag, box });
         }
       }
     }
@@ -1777,6 +1812,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.key === "Enter") { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); }
     else if (e.key === "Escape") { e.preventDefault(); closeFind(); }
   });
+  // ink written while Find is open is read a moment after the pen stops (only changed pages are read again)
+  let findIdle = 0;
+  const onChangeBeforeFind = renderer.onChange;
+  renderer.onChange = () => {
+    onChangeBeforeFind?.();
+    if (findOpen()) { clearTimeout(findIdle); findIdle = window.setTimeout(() => { if (findOpen()) void readInk(); }, 1500); }
+  };
   findLang.addEventListener("change", () => { try { localStorage.setItem("sn.inklang", findLang.value); } catch { /* private mode */ } find.index = null; find.noteId = ""; void readInk(); });
 
   // ---------- page panel (right): the page's format, live, and the page actions; toggled from the top bar
@@ -2096,14 +2138,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderer.penType = penFor(penById(pref.get("sn.pen", "pen")).id, penSetting[penById(pref.get("sn.pen", "pen")).id]);
   applyPenColor();
   syncPenButton();
-  setTool("pen");
+  setTool("pan"); // the app opens with the Hand tool: looking around a note never leaves a stray mark; pick a pen to write
 
   $("btn-pen-settings").dataset.pop = "1";
   $("btn-pen-settings").addEventListener("click", (e) => {
     const anchor = e.currentTarget as HTMLElement;
     const build = (root: HTMLElement) => {
       root.append(el("div", "pop-title", "Touch & pen"));
-      root.appendChild(popItem("Stylus only (palm rejection)", "pen", () => { renderer.stylusOnly = !renderer.stylusOnly; openPopover(anchor, build); }, { checked: renderer.stylusOnly }));
+      root.appendChild(popItem("Stylus only (palm rejection)", "pen", () => { renderer.stylusOnly = !renderer.stylusOnly; pref.set("sn.stylus", renderer.stylusOnly ? "1" : "0"); openPopover(anchor, build); }, { checked: renderer.stylusOnly }));
       root.appendChild(popItem("E-Ink mode (high contrast)", "image", () => {
         renderer.eInkMode = !renderer.eInkMode;
         document.body.classList.toggle("eink-mode", renderer.eInkMode);

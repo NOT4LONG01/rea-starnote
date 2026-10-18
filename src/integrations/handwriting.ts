@@ -130,8 +130,8 @@ const androidRecognizer: Recognizer = (lines, lang) => new Promise((resolve, rej
   try { w.StarNoteAndroid.recognizeInk(id, JSON.stringify(lines), lang); } catch (e) { pending.delete(id); reject(e); }
 });
 
-/** The language to read handwriting in: the user's choice, else the device's language. */
+/** The language to read handwriting in: the user's choice, else both (notes often mix Korean and English). */
 export const inkLanguage = () => {
   try { const v = localStorage.getItem("sn.inklang"); if (v) return v; } catch { /* private mode */ }
-  return /^ko/i.test(navigator.language) ? "ko" : "en";
+  return "both";
 };

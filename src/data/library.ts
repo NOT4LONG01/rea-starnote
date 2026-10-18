@@ -108,7 +108,7 @@ export const library = {
 
 export interface InkIndex {
   lang: string;
-  pages: Record<string, { sig: string; lines: { text: string; box: { l: number; t: number; r: number; b: number } }[] }>;
+  pages: Record<string, { sig: string; lines: { text: string; lang?: string; box: { l: number; t: number; r: number; b: number } }[] }>;
 }
 
 /** The tile shown on the card: origin page when present, else the busiest page. */

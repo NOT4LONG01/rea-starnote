@@ -31,7 +31,9 @@ the top lists them.
 - **Tools** (left rail on a wide phone, top row elsewhere): pen, eraser, select (lasso), shapes, text, hand. Tapping the
   active tool opens its options (pen type, four quick colors, sizes; the eraser also has Clear page). The button next to
   the pen sets pressure or opacity and a custom color. **Pen & touch settings** covers stylus-only drawing.
-- **Pen vs finger:** the stylus draws; fingers pan and pinch to zoom (the hand tool lets a finger drag the page).
+- The app opens with the **hand** tool selected (moving around never leaves a mark); pick the pen to write.
+- **Pen vs finger:** once a pen has been used on the device, palm rejection is on: the stylus draws, fingers pan and pinch to
+  zoom. A device without a pen draws with a finger. *Pen & touch settings > Stylus only* turns it on or off for good.
 - **Lasso** selects strokes to move, recolor, copy and paste. **Text** boxes take plain text and LaTeX math (`$$...$$`).
 - **Convert to LaTeX** (Σ, shown while ink is selected): an AI model reads the selected handwriting and the Math panel opens
   with its LaTeX; fix it if needed, then Done replaces the ink with the formula (Undo brings the ink back, Cancel keeps it).
@@ -41,8 +43,9 @@ the top lists them.
 - **Pages:** the pages menu adds, deletes, moves pages and changes their format; the add-page button at the end adds one.
 - **Find in note** (the search button, or Ctrl+F): finds a word in the note's typed text, and in your handwriting where the
   device can read it (Windows with its handwriting language installed, Android; not Linux or the browser). The handwriting is
-  read in the background the first time and again only for pages you changed; the language (한국어 / English) is chosen in the
-  bar. Enter / ↓ next, Shift+Enter / ↑ previous; matches are highlighted and the view moves to each. The recognized text stays
+  read in the background the first time and again only for pages you changed, also while the bar is open (a moment after you
+  stop writing). By default each line is read in Korean *and* English and both are searched; the bar can limit it to one.
+  *What was read* (under the bar) shows the recognized text line by line. Enter / ↓ next, Shift+Enter / ↑ previous; matches are highlighted and the view moves to each. The recognized text stays
   in the app; the `.note` file is not changed.
 - **Page browser:** tap the page number ("2 / 3") to see every page as a thumbnail: tap one to go there, drag to reorder,
   ⋯ for move / add after / delete.

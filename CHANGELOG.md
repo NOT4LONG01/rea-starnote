@@ -4,7 +4,9 @@ Versions follow [SemVer](https://semver.org). Newest first.
 
 ## Unreleased (towards 1.1)
 ### Added
-- **Find in note** (search button, Ctrl+F): typed text everywhere; handwriting where the device has a recognizer (Windows' own ink recognizer, Google ML Kit on Android), read in the background page by page and kept by the app.
+- **Find in note** (search button, Ctrl+F): typed text everywhere; handwriting where the device has a recognizer (Windows' own ink recognizer, Google ML Kit on Android), read in the background page by page and kept by the app. Reads Korean and English together by default; *What was read* shows the recognized text; ink written while the bar is open is read a moment later.
+- Palm rejection is on by default once a pen has been used on the device (a finger only pans); a pen-less device still draws with a finger. The choice in Pen & touch is kept.
+- The editor opens with the Hand tool selected.
 - Select several notes and notebooks in the library (select button, Ctrl/⌘-click, or press and hold) and Move to…, Duplicate, Download (one .zip), Colour…, Move to trash; Restore / Delete forever in the Trash.
 - The rename dialog is the app's own (no "JavaScript - tauri://localhost" prompt, no full-screen editor on Android); notebook and section tabs each get their own colour until one is picked; selecting no longer makes Sections rows jump.
 - Android: **Sign in with Google** uses the phone's Google account (Play services); no client ID or secret on the phone. Needs an OAuth client of type Android in the Cloud project (user guide, Google Drive).

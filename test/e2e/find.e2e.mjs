@@ -27,15 +27,19 @@ await type("#find-input", "zzz");
 ok(await count() === "No matches", "a word that is not there");
 await click("#find-close");
 
-// a recognizer (Windows / Android in the real apps): every line is read; Korean and English
-await ev(`window.__fakeInk = async (lines, lang) => { window.__inkCalls = (window.__inkCalls || 0) + 1; window.__inkLang = lang; return lines.map((l, i) => i === 0 ? '안녕 하세요 hello' : 'second line world'); }`);
+// a recognizer (Windows / Android in the real apps): by default every line is read in English AND Korean, both are searched
+await ev(`window.__fakeInk = async (lines, lang) => { (window.__inkLangs ||= []).push(lang); window.__inkCalls = (window.__inkCalls || 0) + 1; return lines.map((l, i) => i === 0 ? (lang === 'ko' ? '안녕 하세요' : 'hello') : 'second line world'); }`);
 await ev(`(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true })); })()`); await sleep(1200);
-ok(/Handwriting read/.test(await status()), `Ctrl+F opens it and the handwriting is read (${await status()})`);
-ok(await ev(`window.__inkCalls`) === 1, "one call to the recognizer for the page");
+ok(/Handwriting read \(한국어 \+ English\): 2 lines/.test(await status()), `Ctrl+F opens it and the handwriting is read in both languages by default (${await status()})`);
+ok(await ev(`window.__inkLangs.join()`) === "en,ko", `one call per language for the page (${await ev(`window.__inkLangs.join()`)})`);
 await type("#find-input", "녕하");
 ok(await count() === "1 of 1", `Korean handwriting is found, spaces ignored (${await count()})`);
+await type("#find-input", "hello");
+ok(await count() === "1 of 1", "and the English reading of the same line");
 await type("#find-input", "world");
-ok(await count() === "1 of 1", "the second handwritten line too");
+ok(await count() === "1 of 1", "the second line, read the same in both languages, is ONE hit");
+const readList = await ev(`[...document.querySelectorAll('#find-read-list .fr-line')].map(e => e.textContent).join('|')`);
+ok(!await ev(`document.getElementById('find-read').classList.contains('hidden')`) && readList.includes("enhello") && readList.includes("ko안녕 하세요"), `"What was read" lists each line's text per language (${readList})`);
 await type("#find-input", "e");
 const n = await count();
 ok(/^1 of \d+$/.test(n) && Number(n.split(" of ")[1]) >= 3, `several hits across typed text and handwriting (${n})`);
@@ -46,11 +50,11 @@ ok(await ev(`document.getElementById('find-bar').classList.contains('hidden')`),
 
 // the reading is kept: opening again reads nothing new until the ink changes
 await click("#btn-find"); await sleep(800);
-ok(await ev(`window.__inkCalls`) === 1, "opened again: nothing read again (the page did not change)");
-await click("#find-close");
+ok(await ev(`window.__inkCalls`) === 2, "opened again: nothing read again (the page did not change)");
+// writing while Find is open: read again a moment after the pen stops, no need to reopen
 await drag([[r.x + 600, r.y + 600], [r.x + 680, r.y + 640]]);
-await click("#btn-find"); await sleep(1000);
-ok(await ev(`window.__inkCalls`) === 2, "after writing more, only that page is read again");
+await sleep(2500);
+ok(await ev(`window.__inkCalls`) === 4, `new ink is read while Find stays open (${await ev(`window.__inkCalls`)} calls)`);
 await click("#find-close");
 
 b.close();

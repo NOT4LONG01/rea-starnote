@@ -13,7 +13,7 @@ await ev(`document.getElementById('btn-back').click()`); await sleep(800);
 ok(await cards() === 0 && await tabs() === 0, "going back from an untouched new note leaves no card and no stale tab");
 
 // drawing is autosaved without leaving the note
-await newNote();
+await newNote(); await ev(`document.getElementById('tool-pen').click()`); await sleep(200); // the app starts with the Hand tool
 const box = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse);
 await drag([[box.x + 300, box.y + 300], [box.x + 400, box.y + 340], [box.x + 500, box.y + 300]]);
 ok(await ev(`!!document.querySelector('.tab-dirty')`), "right after drawing the tab shows unsaved");

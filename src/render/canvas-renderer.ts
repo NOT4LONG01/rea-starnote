@@ -69,6 +69,7 @@ export class CanvasRenderer {
 
   // Multiplatform / Android / Tablet features
   public stylusOnly: boolean = false; // Palm-rejection: ignore touch events when drawing
+  public onPen: (() => void) | null = null; // a pen touched the canvas (main turns palm rejection on the first time)
   public eInkMode: boolean = false;   // High-contrast rendering for Onyx Boox / E-ink screens
 
   // Zoom change callback for UI synchronization
@@ -362,6 +363,7 @@ export class CanvasRenderer {
 
       const isPen = e.pointerType === "pen";
       const isTouch = e.pointerType === "touch";
+      if (isPen) this.onPen?.();
 
       // Palm Rejection: If user is already drawing with pen, ignore any resting palm touches!
       if (this.isDrawing && this.drawingPointerId !== null && isTouch) {
