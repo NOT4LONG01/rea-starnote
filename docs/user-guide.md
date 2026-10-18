@@ -54,6 +54,12 @@ The Google Drive account button (top left). You provide your own Google OAuth cl
 the app; sign-in opens your system browser. Sync is two-way: new and changed notes go up and down, a note changed on two
 devices keeps both versions as a conflict copy, and deleting a note moves its Drive file to the Drive trash.
 
+**On Android** there is nothing to type: *Sign in with Google* uses the phone's Google account (account picker and consent
+screen from Google Play services). Once, in the same Google Cloud project as your Desktop client: *APIs & Services >
+Credentials > Create credentials > OAuth client ID*, type **Android**, package name `com.starnote.interop`, SHA-1
+`62:06:26:F8:30:16:3E:9C:52:5D:8E:87:22:28:B6:2C:85:1A:FF:DE` (the app's signing key; the same for every release). Your account
+must be a Test user of the project, as for the desktop apps. Sign-in stays: Play services renews access by itself.
+
 ## Zotero
 Zotero in the sidebar. Create an API key at zotero.org/settings/keys (read and write library, allow file access) and paste it
 into the app. Browse collections, open a stored PDF to annotate it, and upload the annotated PDF back as a new attachment

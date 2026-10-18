@@ -40,6 +40,19 @@ const STORAGE_KEY_CLIENT_ID = "starnote_gdrive_client_id";
 // The desktop app needs a Desktop-type OAuth client; the web app needs a Web-type one. They must never share a saved ID.
 const clientIdKey = () => (isDesktopApp() ? "starnote_gdrive_desktop_client_id" : STORAGE_KEY_CLIENT_ID);
 const STORAGE_KEY_MOCK_MODE = "starnote_gdrive_mock_mode";
+const STORAGE_KEY_ANDROID = "starnote_gdrive_android"; // signed in with the phone's Google account: tokens are renewed by Play Services
+
+/** The Android app's Google sign-in (Play Services, an Android OAuth client matched by package and signing key), if this is it. */
+export const androidSignIn = () => !!(globalThis as any).StarNoteAndroid?.googleAuthorize;
+let nextAuth = 1;
+const authWaits = new Map<number, { ok: (t: string) => void; fail: (e: Error) => void }>();
+function androidAuthorize(scopes: string[], interactive: boolean): Promise<string> {
+  const w = globalThis as any;
+  w.__gAuthDone ??= (id: number, token: string) => { authWaits.get(id)?.ok(token); authWaits.delete(id); };
+  w.__gAuthFail ??= (id: number, why: string) => { authWaits.get(id)?.fail(new Error(why)); authWaits.delete(id); };
+  const id = nextAuth++;
+  return new Promise((ok, fail) => { authWaits.set(id, { ok, fail }); w.StarNoteAndroid.googleAuthorize(id, scopes.join(" "), interactive); });
+}
 
 export class GoogleDriveService {
   private config: GoogleDriveConfig;
@@ -103,6 +116,7 @@ export class GoogleDriveService {
   public isConnected(): boolean {
     if (this.mockMode) return true;
     if (this.refreshToken) return true; // desktop sign-in: access tokens are renewed silently
+    if (localStorage.getItem(STORAGE_KEY_ANDROID) && this.accessToken) return true; // phone: Play Services renews them
     if (!this.accessToken) return false;
     const exp = Number(localStorage.getItem(STORAGE_KEY_EXPIRY));
     return !exp || Date.now() < exp; // pasted tokens have no recorded expiry
@@ -223,6 +237,7 @@ export class GoogleDriveService {
    * ponytail: no refresh token; the user re-clicks Sign in after expiry.
    */
   public async startOAuthFlow(): Promise<void> {
+    if (androidSignIn()) return this.startAndroidSignIn();
     if (isDesktopApp()) return this.startDesktopOAuthFlow();
     if (!this.config.clientId) {
       throw new Error("Please enter your Google Cloud OAuth 2.0 Client ID in Settings first.");
@@ -323,6 +338,20 @@ export class GoogleDriveService {
     if (!(await this.refreshUserProfile())) throw new Error("Signed in, but Google did not return your profile; Drive may still work. Try Sync now, or sign in again.");
   }
 
+  // Android app: the phone's Google account through Play Services (no client ID, secret or browser on the phone)
+  private async startAndroidSignIn(): Promise<void> {
+    let token: string;
+    try { token = await androidAuthorize(this.config.scopes, true); } catch (e: any) {
+      if (e.message === "cancelled") throw new Error("Google sign-in was cancelled.");
+      // DEVELOPER_ERROR (10) / "unregistered": no Android OAuth client for this package and signing key in the Cloud project
+      if (/\b10\b|developer|unregistered|not registered/i.test(e.message)) throw new Error(`Google does not recognise this app (${e.message}). Add an OAuth client of type Android to your Google Cloud project with package com.starnote.interop and the app's SHA-1 (see the user guide), then try again.`);
+      throw new Error(`Google sign-in failed: ${e.message}`);
+    }
+    localStorage.setItem(STORAGE_KEY_ANDROID, "1");
+    this.storeTokens({ access_token: token, expires_in: 3300 }); // Play Services tokens last an hour; renew a bit early
+    if (!(await this.refreshUserProfile())) throw new Error("Signed in, but Google did not return your profile; Drive may still work. Try Sync now, or sign in again.");
+  }
+
   private async refreshAccessToken(): Promise<void> {
     if (!this.config.clientId) throw new Error("The Google Client ID is missing. Open Settings in the Drive dialog and enter it again, then sign in.");
     const body = new URLSearchParams({ client_id: this.config.clientId, grant_type: "refresh_token", refresh_token: this.refreshToken! });
@@ -344,6 +373,13 @@ export class GoogleDriveService {
     const exp = Number(localStorage.getItem(STORAGE_KEY_EXPIRY));
     const fresh = this.accessToken && !(exp && Date.now() > exp - 60_000);
     if (fresh) return this.accessToken!;
+    if (localStorage.getItem(STORAGE_KEY_ANDROID) && androidSignIn()) {
+      this.refreshing ??= androidAuthorize(this.config.scopes, false)
+        .then((t) => this.storeTokens({ access_token: t, expires_in: 3300 }), () => { this.logout(); throw new Error("Google Drive session expired. Please sign in again."); })
+        .finally(() => { this.refreshing = null; });
+      await this.refreshing;
+      if (this.accessToken) return this.accessToken;
+    }
     if (this.refreshToken) {
       this.refreshing ??= this.refreshAccessToken().finally(() => { this.refreshing = null; }); // one renewal for concurrent calls
       await this.refreshing;
@@ -767,5 +803,6 @@ export class GoogleDriveService {
     localStorage.removeItem(STORAGE_KEY_EXPIRY);
     localStorage.removeItem(STORAGE_KEY_USER);
     localStorage.removeItem(STORAGE_KEY_MOCK_MODE);
+    localStorage.removeItem(STORAGE_KEY_ANDROID); // ponytail: Play Services keeps the grant, so the next sign-in skips the account picker; revokeAccess if people want to switch accounts
   }
 }
