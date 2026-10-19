@@ -77,5 +77,29 @@ const saved = async (title) => { await ev(`[...document.querySelectorAll('#lib-g
 const keptRight = await saved("Right"), keptLeft = await saved("Left");
 ok(keptRight === 2 && keptLeft === 1, `both notes kept what was written in their half (Right ${keptRight} of 2 strokes, Left ${keptLeft} of 1 after the undo)`);
 
+// a split saved as a named group, reopened from the library in one tap; rename and delete it (the notes stay)
+const groupsShown = () => ev(`[...document.querySelectorAll('#side-groups .side-open span')].map(e => e.textContent).join('|')`);
+await ev(`[...document.querySelectorAll('#lib-grid .card:not(.create)')].find(c => c.textContent.includes('Right')).querySelector('.card-thumb').click()`); await sleep(1200);
+await click("#btn-split");
+await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Left')).click()`); await sleep(1200);
+await click("#btn-split");
+ok(await ev(`[...document.querySelectorAll('#popover .pop-item')].map(e => e.textContent.trim()).join('|')`) === "Save as a group…|End split", "while split, the split button offers Save as a group and End split");
+await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Save as a group')).click()`); await sleep(400);
+ok(await ev(`document.getElementById('ask-input').value`) === "Right + Left", "the name starts as the two notes");
+await ev(`document.getElementById('ask-input').value = 'Study'; document.getElementById('ask-ok').click()`); await sleep(800);
+await click("#btn-back"); await sleep(1200);
+ok(await groupsShown() === "Study", `the library lists it under Groups (${await groupsShown()})`);
+await ev(`document.querySelector('#side-groups .side-open').click()`); await sleep(2500);
+ok(!await ev(`document.getElementById('pane-1').classList.contains('hidden')`) && await paneTitle(0) === "Right" && await paneTitle(1) === "Left", `one tap reopens both, side by side as saved (${await paneTitle(0)} | ${await paneTitle(1)})`);
+await click("#btn-back"); await sleep(1200);
+await ev(`document.querySelector('#side-groups .icon-btn').click()`); await sleep(300);
+await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Rename')).click()`); await sleep(400);
+await ev(`document.getElementById('ask-input').value = 'Exam'; document.getElementById('ask-ok').click()`); await sleep(500);
+ok(await groupsShown() === "Exam", "Rename renames it");
+await ev(`document.querySelector('#side-groups .icon-btn').click()`); await sleep(300);
+await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Delete group')).click()`); await sleep(500);
+ok(await groupsShown() === "" && await ev(`document.getElementById('side-groups').classList.contains('hidden')`), "Delete group removes it");
+ok(await ev(`[...document.querySelectorAll('#lib-grid .card:not(.create)')].map(c => c.textContent).join('|')`).then((t) => t.includes("Right") && t.includes("Left")), "and both notes are still in the library");
+
 b.close();
 finish();

@@ -248,6 +248,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("count-all").textContent = String(items.filter((i) => !i.trashed && !isFolder(i)).length);
     $("count-trash").textContent = String(visibleTrash(items).length);
     $("count-quick").textContent = String(items.filter((i) => !i.trashed && !isFolder(i) && !liveParent(items, i)).length);
+    renderGroups();
     renderCrumbs();
     const ctx = sectionsCtx();
     const view = $("lib-view");
@@ -1150,15 +1151,85 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.querySelectorAll<HTMLElement>(".pane-close").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); closeHalf(Number(b.dataset.pane)); }));
   function renderPaneHeads() { panes.forEach((p) => { p.el.querySelector(".pane-title")!.textContent = p.s?.item.title ?? ""; }); }
 
-  /** Split on: choose what the other half shows (another open note, or a recent one from the library). */
+  // ---------- split groups: a pair of notes shown side by side, named and reopened later (kept on this device)
+  // ponytail: device-only (localStorage); a synced copy (Drive app data) if groups should follow the user to other devices
+  interface SplitGroup { id: string; name: string; left: string; right: string }
+  const readGroups = (): SplitGroup[] => { try { return JSON.parse(pref.get("sn.groups", "[]")); } catch { return []; } };
+  const writeGroups = (g: SplitGroup[]) => { pref.set("sn.groups", JSON.stringify(g)); renderGroups(); };
+  async function saveGroup() {
+    const [l, r] = [panes[0].s, panes[1].s];
+    if (!split || !l || !r) return;
+    const name = (await askText("Name this group", `${l.item.title} + ${r.item.title}`))?.trim();
+    if (!name) return;
+    await Promise.all([l, r].filter(isDirty).map((s) => saveSession(s))); // both notes are in the library before the group points at them
+    writeGroups([...readGroups(), { id: crypto.randomUUID(), name, left: l.item.id, right: r.item.id }]);
+    showToast(`Saved "${name}": it is under Groups in the library and in the split button`, "success");
+  }
+  async function openGroup(g: SplitGroup) {
+    const live = (id: string) => items.find((i) => i.id === id && !i.trashed);
+    const [l, r] = [live(g.left), live(g.right)];
+    if (!l || !r) {
+      showToast(`"${g.name}": ${!l && !r ? "both notes are" : "one note is"} gone (deleted or in the Trash)`, "error");
+      if (l || r) await openItem((l ?? r)!.id);
+      return;
+    }
+    if (split) setSplit(false);
+    await openItem(l.id);
+    setSplit(true); focusPane(1);
+    await openItem(r.id);
+  }
+  function groupMenu(anchor: HTMLElement, g: SplitGroup) {
+    openPopover(anchor, (root) => {
+      root.appendChild(popItem("Rename…", "pen", async () => {
+        closePopover();
+        const name = (await askText("Rename group", g.name))?.trim();
+        if (name) writeGroups(readGroups().map((x) => (x.id === g.id ? { ...x, name } : x)));
+      }));
+      root.appendChild(popItem("Delete group", "trash", () => { closePopover(); writeGroups(readGroups().filter((x) => x.id !== g.id)); showToast(`Group "${g.name}" deleted (its notes are kept)`, "info"); }));
+    });
+  }
+  function renderGroups() {
+    const box = $("side-groups"), groups = readGroups();
+    box.replaceChildren();
+    box.classList.toggle("hidden", !groups.length);
+    if (!groups.length) return;
+    box.append(el("div", "side-head", "Groups"));
+    for (const g of groups) {
+      const row = el("div", "side-group"), open = el("button", "side-open"), more = el("button", "icon-btn");
+      open.innerHTML = `<i data-icon="split"></i>`;
+      open.append(el("span", "", g.name));
+      open.title = `${items.find((i) => i.id === g.left)?.title ?? "?"} + ${items.find((i) => i.id === g.right)?.title ?? "?"}`;
+      open.addEventListener("click", () => void openGroup(g));
+      more.innerHTML = `<i data-icon="more"></i>`; more.title = "Group: rename, delete";
+      more.addEventListener("click", (e) => { e.stopPropagation(); groupMenu(more, g); });
+      row.append(open, more);
+      box.append(row);
+    }
+    hydrateIcons(box);
+  }
+
+  /** Split on: choose what the other half shows (another open note, or a recent one from the library), or a saved group.
+   * While split: save the pair as a group, or end the split. */
   $("btn-split").addEventListener("click", (e) => {
-    if (split) { setSplit(false); return; }
     const anchor = e.currentTarget as HTMLElement;
+    if (split) {
+      openPopover(anchor, (root) => {
+        root.appendChild(popItem("Save as a group…", "split", () => { closePopover(); void saveGroup(); }));
+        root.appendChild(popItem("End split", "close", () => { closePopover(); setSplit(false); }));
+      });
+      return;
+    }
     const open = sessions.filter((t) => t !== active);
     const recent = items.filter((i) => !isFolder(i) && !i.trashed && !sessions.some((t) => t.item.id === i.id)).sort((a, b) => b.modified - a.modified).slice(0, 8);
-    if (!open.length && !recent.length) { showToast("Open or create a second note first", "info"); return; }
+    const groups = readGroups();
+    if (!open.length && !recent.length && !groups.length) { showToast("Open or create a second note first", "info"); return; }
     const show = (go: () => void) => { closePopover(); setSplit(true); focusPane(1); go(); };
     openPopover(anchor, (root) => {
+      if (groups.length) {
+        root.append(el("div", "pop-title", "Groups"));
+        for (const g of groups) root.appendChild(popItem(g.name, "split", () => { closePopover(); void openGroup(g); }));
+        root.append(el("div", "pop-sep"));
+      }
       root.append(el("div", "pop-title", "Show beside it"));
       for (const t of open) root.appendChild(popItem(t.item.title, "notes", () => show(() => activate(t))));
       if (open.length && recent.length) root.append(el("div", "pop-sep"));

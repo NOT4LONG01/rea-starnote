@@ -57,6 +57,9 @@ the top lists them.
   one (one above the other on a tall screen). Each half has its own pages, zoom and undo; the tools work on the half you
   touched last (its head is tinted). Tapping the other half's tab moves there; the × on a half closes it (the other note
   fills the window), and the button or Back ends the split.
+  **Groups:** while split, the split button offers *Save as a group…*: name the pair and it is listed under *Groups* in
+  the library sidebar (and at the top of the split button's list); one tap opens both notes side by side again. Its ⋯ renames
+  or deletes the group (the notes stay). Groups are kept on this device.
 - **Page browser:** tap the page number ("2 / 3") to see every page as a thumbnail: tap one to go there, drag to reorder,
   ⋯ for move / add after / delete.
 - **Page panel** (the page-with-gear button, top right): the open page's paper, orientation, style and line spacing, applied
