@@ -3,6 +3,8 @@
 | Version | Branch | What | State |
 |---|---|---|---|
 Only `x.x.0` versions are stable; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19; docs/branching.md).
+**Real StarNote compatibility is not a release requirement** (owner, 2026-10-19): whether StarNote itself opens what REA-StarNote saves
+(strokes, text, pictures) stays unverified and is not claimed; releases are judged on REA-StarNote's own QA.
 
 | Version | Branch | What | State |
 |---|---|---|---|
