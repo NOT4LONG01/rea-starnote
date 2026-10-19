@@ -55,7 +55,8 @@ the top lists them.
   StarNote's engine stores them, but whether StarNote itself shows them is not yet checked.
 - **Split view** (the split button in the top bar): pick another open note, a recent one or a PDF to show beside the current
   one (one above the other on a tall screen). Each half has its own pages, zoom and undo; the tools work on the half you
-  touched last (it has a blue frame). Tapping the other half's tab moves there; the button or Back ends the split.
+  touched last (its head is tinted). Tapping the other half's tab moves there; the × on a half closes it (the other note
+  fills the window), and the button or Back ends the split.
 - **Page browser:** tap the page number ("2 / 3") to see every page as a thumbnail: tap one to go there, drag to reorder,
   ⋯ for move / add after / delete.
 - **Page panel** (the page-with-gear button, top right): the open page's paper, orientation, style and line spacing, applied

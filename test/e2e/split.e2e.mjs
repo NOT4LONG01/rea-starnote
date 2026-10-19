@@ -52,6 +52,24 @@ ok(await ev(`[...document.querySelectorAll('#tabs .tab.shown, .tab.shown')].leng
 await ev(`[...document.querySelectorAll('.tab')].find(t => t.textContent.includes('Right')).click()`); await sleep(300);
 ok(await ev(`document.getElementById('pane-0').classList.contains('focused')`) && await paneTitle(1) === "Left", "tapping the other half's tab focuses that half");
 
+// one window, two halves: each half names its note, the active one has a tinted head (no frame around it)
+const heads = () => ev(`JSON.stringify([0, 1].map(i => { const h = document.querySelector('#pane-' + i + ' .pane-head'); return { title: h.querySelector('.pane-title').textContent, bg: getComputedStyle(h).backgroundColor, shown: h.offsetHeight > 0 }; }))`).then(JSON.parse);
+let hs = await heads();
+ok(hs[0].shown && hs[1].shown && hs[0].title === "Right" && hs[1].title === "Left" && hs[0].bg !== hs[1].bg, `each half names its note; the active one is tinted (${hs.map((h) => h.title + " " + h.bg).join(" | ")})`);
+ok(await ev(`getComputedStyle(document.getElementById('pane-0'), '::after').content`) === "none", "no frame drawn around the active half");
+// × on the right half: the left note fills the window
+await click("#pane-1 .pane-close"); await sleep(400);
+ok(await ev(`document.getElementById('pane-1').classList.contains('hidden')`) && await paneTitle(0) === "Right" && !(await heads())[0].shown, "× on the right half closes it; the left note fills the window, no heads");
+// split again, then × on the left half: the right one's note moves over
+await click("#btn-split");
+await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Left')).click()`); await sleep(1200);
+ok(await paneTitle(1) === "Left", "Split again shows the other note on the right");
+await click("#pane-0 .pane-close"); await sleep(600);
+ok(await ev(`document.getElementById('pane-1').classList.contains('hidden')`) && await paneTitle(0) === "Left" && await ev(`document.getElementById('doc-title').textContent`) === "Left", "× on the left half: the right half's note fills the window");
+ok(await ev(`[...document.querySelectorAll('.tab')].map(t => t.textContent).join('|')`).then((t) => t.includes("Right") && t.includes("Left")), "both notes stay open in their tabs");
+await click("#btn-split");
+await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Right')).click()`); await sleep(1200);
+
 // leaving the editor ends the split and keeps both notes
 await click("#btn-back"); await sleep(1500);
 ok(await ev(`document.getElementById('pane-1').classList.contains('hidden')`) && !await ev(`document.getElementById('btn-split').classList.contains('on')`), "Back to the library ends the split");

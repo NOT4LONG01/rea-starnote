@@ -1140,6 +1140,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     requestAnimationFrame(() => panes.forEach((p, j) => { if (p.r && (j === 0 || on)) { p.r.resize(); if (p.s) p.r.fit("width"); } })); // each half fits its new width
     renderTabs();
   }
+  /** Closing a half: the other note fills the window (closing the left one moves the right one over); both stay open in tabs. */
+  function closeHalf(i: number) {
+    if (!split) return;
+    const other = panes[1 - i].s;
+    setSplit(false);
+    if (i === 0 && other) activate(other);
+  }
+  document.querySelectorAll<HTMLElement>(".pane-close").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); closeHalf(Number(b.dataset.pane)); }));
+  function renderPaneHeads() { panes.forEach((p) => { p.el.querySelector(".pane-title")!.textContent = p.s?.item.title ?? ""; }); }
+
   /** Split on: choose what the other half shows (another open note, or a recent one from the library). */
   $("btn-split").addEventListener("click", (e) => {
     if (split) { setSplit(false); return; }
@@ -1267,6 +1277,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const seenTabs = new Set<string>(); // tabs already shown: only a newly opened one animates
   function renderTabs() {
+    renderPaneHeads(); // the split halves name their notes (tabs change whenever a note is opened, focused or renamed)
     const wrap = $("tabs");
     wrap.innerHTML = "";
     for (const s of sessions) {

@@ -5,6 +5,7 @@ Versions follow [SemVer](https://semver.org). Newest first.
 Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
 
 ## Unreleased (next QA build: 1.0.2)
+- Split view looks like one window (owner): no blue frame; each half has a slim head with its note's name and a × to close that half (the other note fills the window; both stay open in tabs); the active half's head is tinted. The split button adds the second half.
 - Read handwriting (AI): the owner's "The model gave no answer" with OpenRouter's free-models router. Routers are no longer offered (they can pass a picture to a model that cannot see), and choosing one warns; an empty answer is retried once, then the message names the model that answered and the reason; models that think first get room to answer (4096 tokens); a failure shows Retry and Change model in the Find bar.
 - Fixed: a palm resting on the screen while erasing (or lassoing, moving a selection, drawing a shape, dragging a picture) panned the page or took the gesture over; only drawing was protected (Windows owner, 1.0.1).
 - Choosing a tool only selects it; tap it again to open its options (owner). Before, the options panel opened over the top of the page, and a stroke started on it was lost (Linux QA 1.0.1, F-A). Picking the eraser and tapping it once more opens its options; a double tap on the eraser in use still clears the page.
