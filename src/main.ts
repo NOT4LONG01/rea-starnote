@@ -1661,7 +1661,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   for (const t of TOOLS) {
     $(`tool-${t}`).addEventListener("click", () => {
       if (t !== renderer.activeTool) { lastEraserTap = 0; setTool(t); return; } // the tap that picks the eraser is not half of a double tap (a second tap opens its options; a double tap on the eraser in use clears the page)
-      if (t === "eraser" && Date.now() - lastEraserTap < 450) { lastEraserTap = 0; clearCurrentPage(); return; } // double tap
+      if (t === "eraser" && Date.now() - lastEraserTap < 450) { lastEraserTap = 0; optionsOpen = false; renderToolOptions(); clearCurrentPage(); return; } // double tap (its first tap opened the options: closed again, Linux QA 1.0.2)
       lastEraserTap = t === "eraser" ? Date.now() : 0;
       optionsOpen = !optionsOpen; // tapping the tool in use shows or hides its options
       renderToolOptions();

@@ -90,8 +90,9 @@ await click("tool-pen"); await click("tool-pen"); if (!(await pop()).hidden) awa
 const inkBefore = await ink();
 await ev(`document.getElementById('tool-eraser').click(); document.getElementById('tool-eraser').click()`); await sleep(400); // pick it, then a quick second tap
 ok(await ink() === inkBefore && inkBefore > 0 && !(await pop()).hidden, `picking the eraser and tapping it again opens its options, the page keeps its ink (${inkBefore})`);
+await sleep(600); await click("tool-eraser"); await sleep(600); // close its options again (taps within 450 ms count as a double tap)
 await ev(`document.getElementById('tool-eraser').click(); document.getElementById('tool-eraser').click()`); await sleep(400); // a double tap on the eraser in use
-ok(await ink() === 0, "a double tap on the eraser in use clears the page");
+ok(await ink() === 0 && (await pop()).hidden, `a double tap on the eraser in use clears the page, and leaves no options panel over it (ink ${await ink()}, panel hidden ${(await pop()).hidden})`);
 await click("tool-undo");
 ok(await ink() === inkBefore, "and Undo brings the ink back");
 

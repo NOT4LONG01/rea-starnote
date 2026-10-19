@@ -5,6 +5,7 @@ Versions follow [SemVer](https://semver.org). Newest first.
 Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
 
 ## Unreleased (next QA build: 1.0.3)
+- The double tap on the eraser that clears the page no longer leaves its options panel open over the page (Linux QA 1.0.2).
 - Read handwriting (AI): a used-up free-model limit (429, or a limit/quota error inside the reply) says so plainly (wait for the reset, add a little credit, or pick a paid model) and is not retried (that only used up more of the allowance); after a failure the Find bar says how many pages are still unread (the ones read are kept). Owner, 1.0.2: free models hit their limit.
 
 ## 1.0.2 (2026-10-19)
