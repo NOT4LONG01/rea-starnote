@@ -60,10 +60,32 @@ const LINES_PROMPT = (n: number) => `The image shows a page of handwritten notes
 export async function readHandwritingLines(png: string, n: number, opts: { key?: string; model?: string } = {}): Promise<string[]> {
   const w = window as any;
   const raw: string = w.__fakeAiLines ? JSON.stringify(await w.__fakeAiLines(png, n)) : await ask(png, LINES_PROMPT(n), 4096, opts); // room for models that think before answering
-  const json = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-  let got: Record<string, unknown>;
-  try { got = JSON.parse(json.slice(json.indexOf("{"), json.lastIndexOf("}") + 1)); } catch { throw new Error("The model's answer was not the expected list of lines; try again or pick another model."); }
-  return Array.from({ length: n }, (_, i) => (typeof got[String(i + 1)] === "string" ? (got[String(i + 1)] as string).trim() : ""));
+  const lines = parseLines(raw, n);
+  if (!lines) throw new Error(`The model's answer was not a list of lines ("${raw.trim().replace(/\s+/g, " ").slice(0, 80)}${raw.trim().length > 80 ? "…" : ""}"). Try again, or pick another model.`);
+  return lines;
+}
+
+/**
+ * The text per numbered line from a model's answer: the asked JSON object ({"1": "..."}), also inside code fences, or what models
+ * send instead: a JSON array, or lines like "1. text", "1: text", "Line 1: text". Null when none of these is there.
+ */
+export function parseLines(raw: string, n: number): string[] | null {
+  const t = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+  const pick = (get: (i: number) => unknown) => Array.from({ length: n }, (_, i) => { const v = get(i); return typeof v === "string" ? v.trim() : ""; });
+  try {
+    const obj = JSON.parse(t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1));
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) return pick((i) => obj[String(i + 1)]);
+  } catch { /* not an object */ }
+  try {
+    const arr = JSON.parse(t.slice(t.indexOf("["), t.lastIndexOf("]") + 1));
+    if (Array.isArray(arr)) return pick((i) => arr[i]);
+  } catch { /* not an array */ }
+  const byNumber = new Map<number, string>();
+  for (const line of t.split(/\r?\n/)) {
+    const m = line.match(/^\s*(?:[-*]\s*)?(?:line\s*)?\**\s*(\d+)\s*\**\s*[.:)\-]\s*\**\s*(.*?)\s*$/i);
+    if (m && Number(m[1]) >= 1 && Number(m[1]) <= n) byNumber.set(Number(m[1]), m[2].replace(/^["“]|["”]$/g, ""));
+  }
+  return byNumber.size ? pick((i) => byNumber.get(i + 1)) : null;
 }
 
 /** Reads handwritten math from a PNG (base64, no prefix) into LaTeX. Throws with a message the user can act on. */

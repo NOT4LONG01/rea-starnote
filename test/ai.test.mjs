@@ -68,7 +68,7 @@ await test("readHandwritingLines asks for the numbered lines and takes them by n
   const body = JSON.parse(sent.init.body);
   assert.match(body.messages[0].content[0].text, /red number at its left, 1 to 3/);
   reply(200, { choices: [{ message: { content: "Sorry, I can't read this." } }] });
-  await assert.rejects(ai.readHandwritingLines("x", 2), /not the expected list of lines/);
+  await assert.rejects(ai.readHandwritingLines("x", 2), /not a list of lines \("Sorry, I can't read this\."\)/);
 });
 
 await test("an empty answer names the model and why; a list-of-parts answer is read; the budget leaves room to think", async () => {
@@ -95,6 +95,15 @@ await test("a limit inside a 200 reply (free models per day) is reported as a us
   globalThis.fetch = async () => { calls++; return new Response(JSON.stringify({ choices: [{ message: { content: "" }, error: { code: 429, message: "Rate limit exceeded: free-models-per-day" } }] }), { status: 200 }); };
   await assert.rejects(ai.readHandwritingLines("x", 1, { key: "k", model: "a/b:free" }), /The free model's limit is used up.*free-models-per-day/);
   assert.equal(calls, 1, "no retry: it would only use up more of the allowance");
+});
+
+await test("answers in other common shapes are read: a JSON array, numbered lines, 'Line 1:' labels, bold numbers", () => {
+  assert.deepEqual(ai.parseLines('["Claim", "명제"]', 2), ["Claim", "명제"]);
+  assert.deepEqual(ai.parseLines("1. Claim\n2. 명제", 2), ["Claim", "명제"]);
+  assert.deepEqual(ai.parseLines("Here you go:\nLine 1: Claim\nLine 3: x^2", 3), ["Claim", "", "x^2"]);
+  assert.deepEqual(ai.parseLines("**1.** Claim\n**2)** \"명제\"", 2), ["Claim", "명제"]);
+  assert.deepEqual(ai.parseLines("```json\n{\"1\": \"a\", \"2\": \"b\"}\n```", 2), ["a", "b"]);
+  assert.equal(ai.parseLines("I cannot read handwriting.", 2), null);
 });
 
 await test("visionModels keeps image readers only, free ones first", async () => {
