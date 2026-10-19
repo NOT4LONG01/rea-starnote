@@ -40,7 +40,14 @@ function db(): Promise<IDBDatabase> {
       if (from < 2) d.createObjectStore(INK); // 2: handwriting search
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => {
+      if (req.error?.name !== "VersionError") return reject(req.error);
+      // The library was upgraded by a newer build (1.1 adds stores; 1.0.x and 1.1 builds share one profile): open it as it
+      // is. Newer builds only add stores, so everything this build needs is still there.
+      const again = indexedDB.open(DB_NAME);
+      again.onsuccess = () => resolve(again.result);
+      again.onerror = () => reject(new Error("This library was made by a newer version of REA-StarNote. Update the app to open it."));
+    };
   });
   return dbPromise;
 }
