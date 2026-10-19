@@ -373,13 +373,16 @@ export class CanvasRenderer {
       const isTouch = e.pointerType === "touch";
       if (isPen) this.onPen?.();
 
-      // Palm Rejection: If user is already drawing with pen, ignore any resting palm touches!
-      if (this.isDrawing && this.drawingPointerId !== null && isTouch) {
+      // Palm rejection: while a gesture is under way (drawing, erasing, lasso, moving a selection, a shape, a picture), a
+      // touch that is not that gesture's own pointer is a resting palm: ignored, so it can neither pan nor start a pinch
+      // (Windows owner, 1.0.1: erasing was interrupted, since only drawing was guarded)
+      if (isTouch && this.isBusy() && e.pointerId !== this.drawingPointerId) {
+        this.activePointers.delete(e.pointerId);
         return;
       }
 
-      // Check multi-touch pinch zoom detection (only if both pointers are touch and not pen drawing)
-      if (this.activePointers.size === 2 && !this.isDrawing) {
+      // Check multi-touch pinch zoom detection (only if both pointers are touch and no gesture is under way)
+      if (this.activePointers.size === 2 && !this.isBusy()) {
         const pts = Array.from(this.activePointers.values());
         if (pts.every(p => p.pointerType === "touch")) {
           this.isPinching = true;

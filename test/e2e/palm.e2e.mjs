@@ -41,5 +41,32 @@ await ev(`document.getElementById('btn-back').click()`); await sleep(1200); // s
 await send("Page.reload"); await sleep(2500);
 ok(await ev(`window.__starnote.renderer.stylusOnly`) === false, "after a restart the user's choice still wins over \"a pen was seen\"");
 
+// a palm resting on the screen while the pen ERASES (not only while it draws): no pan, no zoom, the erase goes on; with palm
+// rejection on (the palm used to pan the page) and off (the palm used to take the erase over)
+// (Windows owner, 1.0.1: "palm rejection gets cancelled while using the eraser")
+for (const stylusOnly of [true, false]) {
+  await newNote();
+  await ev(`window.__starnote.renderer.stylusOnly = ${stylusOnly}`);
+  const c = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse);
+  const P = (dx, dy) => [c.x + dx, c.y + dy];
+  await ev(`document.getElementById('tool-pen').click()`); await sleep(200);
+  await drag([300, 340, 380, 400, 420, 460, 500].map((x) => P(x, 320)), "pen"); // points all along, so the eraser meets one
+  await ev(`window.__starnote.renderer.stylusOnly = ${stylusOnly}`); // (the first pen stroke turns it on when nobody chose)
+  ok(await strokes() === 1, `palm rejection ${stylusOnly ? "on" : "off"}: a pen stroke to erase`);
+  await ev(`document.getElementById('tool-eraser').click()`); await sleep(200);
+  const view = () => ev(`JSON.stringify([window.__starnote.renderer.panX, window.__starnote.renderer.panY, window.__starnote.renderer.zoom])`);
+  const v0 = await view();
+  const mouse = (type, [x, y], buttons) => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", buttons, clickCount: 1, pointerType: "pen" });
+  await mouse("mousePressed", P(400, 200), 1); await mouse("mouseMoved", P(400, 240), 1); // the pen starts erasing above the stroke
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: c.x + 700, y: c.y + 500 }] }); // a palm lands
+  for (const dy of [40, 120, 200]) await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: c.x + 700 - dy, y: c.y + 500 - dy }] }); // and slides
+  for (const y of [280, 300, 310, 320, 330, 340, 380]) await mouse("mouseMoved", P(400, y), 1); // the pen crosses the stroke (the eraser checks each reported point)
+  await mouse("mouseReleased", P(400, 380), 0);
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await sleep(300);
+  ok(await view() === v0, `the palm neither panned nor zoomed the page while erasing (${v0} -> ${await view()})`);
+  ok(await strokes() === 0, "and the erase went on: the stroke is gone");
+  await ev(`document.getElementById('btn-back').click()`); await sleep(800);
+}
+
 b.close();
 finish();
