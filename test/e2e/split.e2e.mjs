@@ -52,6 +52,24 @@ ok(await ev(`[...document.querySelectorAll('#tabs .tab.shown, .tab.shown')].leng
 await ev(`[...document.querySelectorAll('.tab')].find(t => t.textContent.includes('Right')).click()`); await sleep(300);
 ok(await ev(`document.getElementById('pane-0').classList.contains('focused')`) && await paneTitle(1) === "Left", "tapping the other half's tab focuses that half");
 
+// the divider: drag it to give one half more room; remembered; double-click for half and half
+const share = () => ev(`(() => { const a = document.getElementById('pane-0').getBoundingClientRect().width, b = document.getElementById('panes').getBoundingClientRect().width; return Math.round(a / b * 100); })()`);
+const dv = await rect("#pane-divider"), pb = await rect("#panes");
+await drag([[dv.x + dv.width / 2, dv.y + 200], [pb.x + pb.width * 0.6, dv.y + 200], [pb.x + pb.width * 0.7, dv.y + 200]]);
+await sleep(300);
+ok(Math.abs(await share() - 70) <= 2, `dragging the divider resizes the halves (left ${await share()}%)`);
+ok(await ev(`(() => { const c = document.getElementById('note-canvas'), r = c.getBoundingClientRect(); return Math.abs(c.width / devicePixelRatio - r.width) < 2; })()`), "the left page is redrawn at its new size");
+await drag([[pb.x + pb.width * 0.7, dv.y + 200], [pb.x + pb.width * 0.95, dv.y + 200]]); await sleep(300);
+ok(await share() <= 81, `and stops at 80% (${await share()}%)`);
+await ev(`document.getElementById('pane-divider').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`); await sleep(300);
+ok(Math.abs(await share() - 50) <= 1, `a double-click gives half and half again (${await share()}%)`);
+await drag([[pb.x + pb.width * 0.5, dv.y + 200], [pb.x + pb.width * 0.35, dv.y + 200]]); await sleep(300);
+const kept = await share();
+await click("#btn-split"); await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('End split')).click()`); await sleep(400);
+ok(await share() === 100, "ending the split gives the whole width back");
+await click("#btn-split"); await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Left')).click()`); await sleep(1200);
+ok(Math.abs(await share() - kept) <= 1, `split again: the size is remembered (${kept}% -> ${await share()}%)`);
+
 // one window, two halves: each half names its note, the active one has a tinted head (no frame around it)
 const heads = () => ev(`JSON.stringify([0, 1].map(i => { const h = document.querySelector('#pane-' + i + ' .pane-head'); return { title: h.querySelector('.pane-title').textContent, bg: getComputedStyle(h).backgroundColor, shown: h.offsetHeight > 0 }; }))`).then(JSON.parse);
 let hs = await heads();
@@ -86,11 +104,14 @@ await click("#btn-split");
 ok(await ev(`[...document.querySelectorAll('#popover .pop-item')].map(e => e.textContent.trim()).join('|')`) === "Save as a group…|End split", "while split, the split button offers Save as a group and End split");
 await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Save as a group')).click()`); await sleep(400);
 ok(await ev(`document.getElementById('ask-input').value`) === "Right + Left", "the name starts as the two notes");
+const groupShare = await share();
 await ev(`document.getElementById('ask-input').value = 'Study'; document.getElementById('ask-ok').click()`); await sleep(800);
+{ const d = await rect("#pane-divider"), p = await rect("#panes"); await drag([[d.x + d.width / 2, d.y + 200], [p.x + p.width * 0.65, d.y + 200]]); await sleep(300); } // a different size after saving
 await click("#btn-back"); await sleep(1200);
 ok(await groupsShown() === "Study", `the library lists it under Groups (${await groupsShown()})`);
 await ev(`document.querySelector('#side-groups .side-open').click()`); await sleep(2500);
 ok(!await ev(`document.getElementById('pane-1').classList.contains('hidden')`) && await paneTitle(0) === "Right" && await paneTitle(1) === "Left", `one tap reopens both, side by side as saved (${await paneTitle(0)} | ${await paneTitle(1)})`);
+ok(Math.abs(await share() - groupShare) <= 1, `with the group's own sizes (${groupShare}% saved, ${await share()}% now)`);
 await click("#btn-back"); await sleep(1200);
 await ev(`document.querySelector('#side-groups .icon-btn').click()`); await sleep(300);
 await ev(`[...document.querySelectorAll('#popover .pop-item')].find(e => e.textContent.includes('Rename')).click()`); await sleep(400);

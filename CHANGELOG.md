@@ -5,6 +5,7 @@ Versions follow [SemVer](https://semver.org). Newest first.
 Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
 
 ## Unreleased (next QA build: 1.0.4)
+- Split view halves are resizable (owner): drag the divider (20-80%, up and down when the halves are stacked); the size is remembered, a saved group keeps its own; double-click the divider for half and half.
 
 ## 1.0.3 (2026-10-19)
 QA build (internal), the candidate for 1.1.0. Since 1.0.2:

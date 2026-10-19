@@ -269,14 +269,21 @@ i[data-icon] svg { width: 100%; height: 100%; }
 .pane { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .pane-body { position: relative; flex: 1; min-height: 0; }
 /* one window, two halves: a plain divider; each half has a slim head with its note and a close button, the active one tinted */
-.panes.split .pane + .pane { border-left: 2px solid #111; }
+/* the divider between the halves: a thin line with a wider grab area; drag to resize */
+.pane-divider { flex: none; width: 8px; margin: 0 -3px; z-index: 2; cursor: col-resize; touch-action: none; position: relative; }
+.pane-divider::before { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: #111; }
+.pane-divider:hover::before, .pane-divider.dragging::before { background: var(--accent); }
 .pane-head { display: none; flex: none; align-items: center; gap: 4px; height: 30px; padding: 0 2px 0 10px; background: var(--bg-bar); border-bottom: 1px solid #1f1f1f; color: var(--muted); font-size: 13px; }
 .panes.split .pane-head { display: flex; }
 .panes.split .pane.focused .pane-head { background: color-mix(in srgb, var(--accent) 22%, var(--bg-bar)); color: var(--text); }
 .pane-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pane-close.icon-btn { width: 28px; height: 28px; }
 .pane-close i[data-icon] { width: 16px; height: 16px; }
-@media (orientation: portrait) { .panes.split { flex-direction: column; } .panes.split .pane + .pane { border-left: 0; border-top: 2px solid #111; } }
+@media (orientation: portrait) {
+  .panes.split { flex-direction: column; }
+  .pane-divider { width: auto; height: 8px; margin: -3px 0; cursor: row-resize; }
+  .pane-divider::before { top: 3px; bottom: auto; left: 0; right: 0; width: auto; height: 2px; }
+}
 #btn-split.on { color: var(--accent); }
 .tab.shown { box-shadow: inset 0 -2px 0 #6b8fae; } /* shown in the other half of the split */
 .canvas-container.drag { box-shadow: inset 0 0 0 3px var(--accent); }

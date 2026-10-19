@@ -1135,12 +1135,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     split = on;
     panes[1].el.classList.toggle("hidden", !on);
+    $("pane-divider").classList.toggle("hidden", !on);
+    setSplitRatio(on ? splitRatio : null);
     $("panes").classList.toggle("split", on);
     $("btn-split").classList.toggle("on", on);
     panes.forEach((p, j) => p.el.classList.toggle("focused", on && j === focus));
     requestAnimationFrame(() => panes.forEach((p, j) => { if (p.r && (j === 0 || on)) { p.r.resize(); if (p.s) p.r.fit("width"); } })); // each half fits its new width
     renderTabs();
   }
+  // ---------- the divider: drag to give one half more room (20-80%), double-click for half and half; remembered
+  let splitRatio = Math.min(0.8, Math.max(0.2, Number(pref.get("sn.splitratio", "0.5")) || 0.5));
+  function setSplitRatio(r: number | null) {
+    panes[0].el.style.flex = r === null ? "" : `0 0 ${(r * 100).toFixed(2)}%`;
+    if (r !== null) splitRatio = r;
+  }
+  {
+    const div = $("pane-divider");
+    let dragging = false, frame = 0;
+    const resizeAll = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => panes.forEach((p) => p.r?.resize())); };
+    div.addEventListener("pointerdown", (e) => { dragging = true; div.classList.add("dragging"); div.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); });
+    div.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const box = $("panes").getBoundingClientRect(), stacked = getComputedStyle($("panes")).flexDirection === "column";
+      const r = stacked ? (e.clientY - box.top) / box.height : (e.clientX - box.left) / box.width;
+      setSplitRatio(Math.min(0.8, Math.max(0.2, r)));
+      resizeAll();
+    });
+    const end = () => { if (!dragging) return; dragging = false; div.classList.remove("dragging"); pref.set("sn.splitratio", String(splitRatio)); resizeAll(); };
+    div.addEventListener("pointerup", end);
+    div.addEventListener("pointercancel", end);
+    div.addEventListener("dblclick", () => { setSplitRatio(0.5); pref.set("sn.splitratio", "0.5"); resizeAll(); });
+  }
+
   /** Closing a half: the other note fills the window (closing the left one moves the right one over); both stay open in tabs. */
   function closeHalf(i: number) {
     if (!split) return;
@@ -1153,7 +1179,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ---------- split groups: a pair of notes shown side by side, named and reopened later (kept on this device)
   // ponytail: device-only (localStorage); a synced copy (Drive app data) if groups should follow the user to other devices
-  interface SplitGroup { id: string; name: string; left: string; right: string }
+  interface SplitGroup { id: string; name: string; left: string; right: string; ratio?: number }
   const readGroups = (): SplitGroup[] => { try { return JSON.parse(pref.get("sn.groups", "[]")); } catch { return []; } };
   const writeGroups = (g: SplitGroup[]) => { pref.set("sn.groups", JSON.stringify(g)); renderGroups(); };
   async function saveGroup() {
@@ -1162,7 +1188,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const name = (await askText("Name this group", `${l.item.title} + ${r.item.title}`))?.trim();
     if (!name) return;
     await Promise.all([l, r].filter(isDirty).map((s) => saveSession(s))); // both notes are in the library before the group points at them
-    writeGroups([...readGroups(), { id: crypto.randomUUID(), name, left: l.item.id, right: r.item.id }]);
+    writeGroups([...readGroups(), { id: crypto.randomUUID(), name, left: l.item.id, right: r.item.id, ratio: splitRatio }]);
     showToast(`Saved "${name}": it is under Groups in the library and in the split button`, "success");
   }
   async function openGroup(g: SplitGroup) {
@@ -1175,6 +1201,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     if (split) setSplit(false);
     await openItem(l.id);
+    if (g.ratio) splitRatio = g.ratio; // the group's own sizes
     setSplit(true); focusPane(1);
     await openItem(r.id);
   }
