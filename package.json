@@ -1,7 +1,7 @@
 {
   "name": "rea-starnote",
   "private": true,
-  "version": "1.1.0-alpha.1",
+  "version": "1.0.1-dev",
   "type": "module",
   "scripts": {
     "dev": "vite",
