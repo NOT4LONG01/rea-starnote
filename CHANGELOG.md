@@ -5,6 +5,7 @@ Versions follow [SemVer](https://semver.org). Newest first.
 Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
 
 ## Unreleased (next QA build: 1.0.2)
+- **Pictures in notes**: paste (Ctrl+V) or drop a picture onto the page; select it with the select tool, move, resize (proportions kept), delete, undo. Saved in the `.note` as StarNote's engine stores images (shape type 19, file in `resource/data`; inferred from Onyx's SDK, real StarNote not yet checked). Big photos are scaled to 2400 px. Shown in library thumbnails.
 
 ## 1.0.1 (2026-10-19)
 QA build (internal; only x.x.0 is stable). Everything since 1.1.0-alpha.1:

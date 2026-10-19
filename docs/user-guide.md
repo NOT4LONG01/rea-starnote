@@ -49,6 +49,10 @@ the top lists them.
   passages you marked with the **highlighter** (`hl`). Enter / ↓ next, Shift+Enter / ↑ previous; matches are highlighted and
   the view moves to each. The read text stays in the app on this device; the `.note` file is not changed. A PDF imported
   before PDF text search (or a scan without text) needs importing again for its text.
+- **Pictures:** paste one (Ctrl+V) or drop a picture file onto the page; it lands selected, under the ink. With the select
+  tool, tap a picture to select it, drag it to move it, drag its corner handle to resize it (proportions kept), Delete (or the
+  bin) removes it; Undo works as for ink. Big photos are scaled to 2400 px. Pictures are saved inside the `.note` the way
+  StarNote's engine stores them, but whether StarNote itself shows them is not yet checked.
 - **Split view** (the split button in the top bar): pick another open note, a recent one or a PDF to show beside the current
   one (one above the other on a tall screen). Each half has its own pages, zoom and undo; the tools work on the half you
   touched last (it has a blue frame). Tapping the other half's tab moves there; the button or Back ends the split.

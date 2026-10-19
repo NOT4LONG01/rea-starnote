@@ -9,7 +9,7 @@ Only `x.x.0` versions are stable; every QA build in between takes the next last 
 | 1.0.0 (stable) | `release/1.0` | the first release: notes, notebooks and sections, Pages / Infinite, PDF, Drive, Zotero, CLI; Android, Windows, Linux | 1.0.0-beta.1 out (2026-10-16); the real-phone beta check comes next |
 | 1.0.x (QA builds) | `main` (+ `feat/handwriting-recognition`) | multi-select, the name REA-StarNote; **handwriting search inside a note**, **Convert to LaTeX**, PDF text and highlights, Android Google sign-in, palm rejection, Hand at start | next QA build 1.0.1 (the first one was named 1.1.0-alpha.1) |
 | a later 1.0.x | `main` | **AI assistant** (below) | planned |
-| a later 1.0.x | `main` | **Pictures in notes**: paste (Ctrl+V) and drag in, shown on the page, move, resize, delete; later from a file and the Android camera. Stored the way StarNote stores images; real StarNote opening such a note is unverified until checked on the phone | in progress |
+| a later 1.0.x | `main` | **Pictures in notes**: paste (Ctrl+V) and drag in, shown on the page, move, resize, delete; later from a file and the Android camera. Stored the way StarNote's engine stores images (type 19, inferred from Onyx's SDK); real StarNote opening such a note is unverified until checked on the phone | paste, drop, move, resize, delete done; from a file / camera later |
 | 1.1.0 (stable) | `release/1.1`, cut from 1.0.x | everything in the 1.0.x QA builds (handwriting search, Convert to LaTeX, PDF text and highlights, split view, the app icon, the AI assistant if ready) **plus pictures in notes** | owner, 2026-10-19: order is 1.0.0, QA builds 1.0.1, 1.0.2, ..., then 1.1.0 when pictures are in and the owner calls it stable |
 
 ## Handwriting search inside a note (first in 1.0.1)

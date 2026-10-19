@@ -126,11 +126,11 @@ export interface InkIndex {
 function coverTile(doc: StarNoteDocument): ParsedTile | undefined {
   if (doc.layout === "stack") return doc.tiles.values().next().value; // the first page is the cover
   const origin = doc.tiles.get("Page[0-0]");
-  if (origin && (origin.strokes.length || origin.textBoxes?.length || origin.backgroundImage)) return origin;
+  if (origin && (origin.strokes.length || origin.textBoxes?.length || origin.images?.length || origin.backgroundImage)) return origin;
   let best: ParsedTile | undefined;
   let bestScore = -1;
   for (const t of doc.tiles.values()) {
-    const score = t.strokes.length + (t.textBoxes?.length ?? 0) + (t.backgroundImage ? 1000 : 0);
+    const score = t.strokes.length + (t.textBoxes?.length ?? 0) + 50 * (t.images?.length ?? 0) + (t.backgroundImage ? 1000 : 0);
     if (score > bestScore) { best = t; bestScore = score; }
   }
   return best ?? origin;
@@ -172,6 +172,9 @@ function paint(w: number, h: number, k: number, rect: { left: number; top: numbe
     ctx.drawImage(tile.backgroundImage, rect.left, rect.top, rw, rh);
   } else {
     drawPageTemplate(ctx, tile?.template ?? "ruled", rect, { line: "#e3e6ea", dot: "#c5cad1", lineWidth: 3, dotRadius: 5.2 }, tile ? spacingOf(tile) : undefined);
+  }
+  for (const img of tile?.images ?? []) { // pictures under the ink, as on the page
+    if (img.bitmap) ctx.drawImage(img.bitmap, tile!.rect.left + img.rect.left, tile!.rect.top + img.rect.top, img.rect.right - img.rect.left, img.rect.bottom - img.rect.top);
   }
   const stroke = (s: ParsedStroke) => {
     const smoothed = interpolateStrokePoints(s.points, { baseWidth: Math.max(s.width, 8), color: s.color, alpha: 1 }, 2);

@@ -1029,7 +1029,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     zone.addEventListener("drop", async (e) => {
       e.preventDefault();
       zone.classList.remove("drag");
-      if (e.dataTransfer?.files?.length) await importFiles(e.dataTransfer.files);
+      const files = [...(e.dataTransfer?.files ?? [])];
+      const pics = zone.id === "canvas-container" && inEditor() ? files.filter((f) => f.type.startsWith("image/")) : [];
+      if (pics.length) { // pictures dropped on a note go onto the page where they land (in split view, on that half)
+        const at = panes.findIndex((p) => !p.el.classList.contains("hidden") && (() => { const r = p.el.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; })());
+        if (at >= 0) focusPane(at);
+        for (const [i, f] of pics.entries()) { const w = renderer.worldAt(e.clientX, e.clientY); await placePicture(f, { x: w.x + i * 40, y: w.y + i * 40 }); }
+      }
+      const rest = files.filter((f) => !pics.includes(f));
+      if (rest.length) await importFiles(rest);
     });
   }
 
@@ -1040,7 +1048,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return shownIn(s)?.getUserStrokes() ?? s.view?.strokes ?? [];
   }
   const erasedSaved = (s: Session) => s.doc.removedStrokes ?? []; // erased strokes the archive still holds
-  const textChanged = (s: Session) => (s.doc.addedTextBoxes?.length ?? 0) + (s.doc.removedTextBoxes?.length ?? 0) > 0;
+  const textChanged = (s: Session) => (s.doc.addedTextBoxes?.length ?? 0) + (s.doc.removedTextBoxes?.length ?? 0) + (s.doc.addedImages?.length ?? 0) + (s.doc.removedImages?.length ?? 0) > 0; // text boxes and pictures
   const pagesChanged = (s: Session) => !!s.doc.pagesChanged || (s.doc.removedPages?.length ?? 0) > 0;
   const isDirty = (s: Session) => pendingStrokes(s).length > 0 || erasedSaved(s).length > 0 || textChanged(s) || pagesChanged(s);
 
@@ -1561,7 +1569,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const changed = renderer.activeTool !== tool;
     if (tool !== "text") { void commitTextEditor(true); commitInline(); inl.pendingMath = false; }
     renderer.activeTool = tool;
-    if (tool !== "lasso" && renderer.hasSelection()) { renderer.clearSelection(); renderer.render(); }
+    if (tool !== "lasso" && (renderer.hasSelection() || renderer.hasPicture())) { renderer.clearSelection(); renderer.render(); }
     for (const t of TOOLS) $(`tool-${t}`).classList.toggle("active", t === tool);
     $("canvas-container").style.cursor = tool === "pan" ? "grab" : tool === "eraser" ? "cell" : "crosshair";
     if (changed) optionsOpen = true; // choosing a tool shows its options
@@ -2228,7 +2236,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const syncSelectionButtons = () => {
     const sel = renderer.hasSelection();
     $("sel-copy").classList.toggle("hidden", !sel);
-    $("sel-delete").classList.toggle("hidden", !sel);
+    $("sel-delete").classList.toggle("hidden", !sel && !renderer.hasPicture());
     $("sel-latex").classList.toggle("hidden", !sel);
     $("sel-paste").classList.toggle("hidden", !renderer.hasClipboard());
   };
@@ -2316,17 +2324,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     else if (mod && e.key.toLowerCase() === "c") { if (renderer.copySelection()) { e.preventDefault(); showToast("Copied. Open any note and paste.", "success"); } }
     else if (mod && e.key.toLowerCase() === "x") { if (renderer.cutSelection()) e.preventDefault(); }
     else if (mod && e.key.toLowerCase() === "v") { if (renderer.hasClipboard()) { e.preventDefault(); renderer.pasteClipboard(); } }
-    else if ((e.key === "Delete" || e.key === "Backspace") && renderer.hasSelection()) { e.preventDefault(); renderer.deleteSelection(); }
+    else if ((e.key === "Delete" || e.key === "Backspace") && (renderer.hasSelection() || renderer.hasPicture())) { e.preventDefault(); renderer.deleteSelection(); }
     else if (e.key === "Escape" && renderer.hasSelection()) { renderer.clearSelection(); renderer.render(); }
   });
 
-  window.addEventListener("paste", (e) => { // pictures can't be placed in a note yet: say so instead of doing nothing
+  window.addEventListener("paste", (e) => { // a picture on the clipboard goes onto the page, in the middle of the view
     if (!inEditor() || (e.target as HTMLElement | null)?.closest?.("input,textarea")) return;
-    if ([...(e.clipboardData?.items ?? [])].some((i) => i.type.startsWith("image/"))) {
-      e.preventDefault();
-      showToast("Pasting pictures isn't supported yet. You can paste drawings copied with the lasso.", "info");
-    }
+    const file = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
+    if (file) { e.preventDefault(); void placePicture(file); }
   });
+  /**
+   * A picture file onto the page (selected, so it can be moved and resized at once). A large photo is scaled to 2400 px on its
+   * long side and kept as JPEG, so a phone photo does not make the note many megabytes; small pictures stay as they are.
+   */
+  async function placePicture(file: Blob, at?: { x: number; y: number }) {
+    if (!active) return;
+    let bytes = new Uint8Array(await file.arrayBuffer());
+    let ext = ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" } as Record<string, string>)[file.type] ?? "png";
+    try {
+      const bmp = await createImageBitmap(file), MAX = 2400;
+      if (Math.max(bmp.width, bmp.height) > MAX) {
+        const k = MAX / Math.max(bmp.width, bmp.height), c = document.createElement("canvas");
+        c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+        c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+        const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/jpeg", 0.88));
+        if (blob) { bytes = new Uint8Array(await blob.arrayBuffer()); ext = "jpg"; }
+      }
+    } catch { /* not decodable: insertImage says so */ }
+    if (await renderer.insertImage(bytes, ext, at)) setTool("lasso"); // ready to move or resize it
+  }
 
   // unsaved work: flush when the window is hidden; a browser tab also warns when it is closed
   document.addEventListener("visibilitychange", () => {

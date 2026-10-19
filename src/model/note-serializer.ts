@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { RawStrokePoint, BrushParameters, interpolateStrokePoints, generateRibbonGeometry, parseStarNotePointsBinary } from "./stroke-interpolator";
-import { StarNoteDocument, ParsedStroke, ParsedTextBox } from "./note-loader";
+import { StarNoteDocument, ParsedStroke, ParsedTextBox, ParsedImage } from "./note-loader";
 import { gridRectOf, sidecarOf, sidecarPath, sizeOfPage } from "./pages";
 
 /**
@@ -205,6 +205,40 @@ export function createTextBoxRecordProtobuf(tb: ParsedTextBox, anchorFileUuid: s
   ];
   return encodeLengthDelimited(1, concat(fields));
 }
+
+/**
+ * Shape record of a picture (type 19), following Onyx's note model that StarNote is built on: bounds (7), identity matrix (8),
+ * the resource JSON (14) naming the file in resource/data. ponytail: inferred, not checked against a picture StarNote made;
+ * compare with one phone-made note and adjust fields here.
+ */
+export function createImageRecordProtobuf(img: ParsedImage, docUuid: string, groupUuid: string): Uint8Array {
+  const now = Date.now();
+  const fields: Uint8Array[] = [
+    encodeStringField(1, img.shapeUuid),
+    encodeVarintField(2, now),
+    encodeVarintField(3, now),
+    encodeVarintField(4, BigInt.asUintN(64, BigInt.asIntN(32, 0xff000000n))),
+    encodeFloat32Field(5, 1.0),
+    encodeStringField(7, JSON.stringify({ bottom: img.rect.bottom, empty: false, left: img.rect.left, right: img.rect.right, stability: 0, top: img.rect.top })),
+    encodeStringField(8, JSON.stringify({ isEmpty: false, values: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] })),
+    encodeStringField(11, JSON.stringify({
+      alphaFactor: 1.0, brushShape: 1, directionEnabled: true, displayScale: 1.0, dpi: 320.0, maxPressure: 32767.0,
+      pressureSensitivity: 0.375, smoothLevel: 0.2, velocityAmplifier: 0.0, velocityIgnoreThreshold: 0.0,
+      velocityLowerBound: 0.0, velocitySensitivity: 0.0, velocityUpperBound: 0.0,
+    })),
+    encodeVarintField(12, 19),
+    encodeStringField(14, JSON.stringify({
+      audioDuration: 0, documentId: docUuid, fileExtension: img.ext, fromType: 0, relativePath: `/${imageFileName(img)}`, status: 0, type: 0, uniqueId: img.resId,
+    })),
+    encodeVarintField(15, 0),
+    encodeStringField(17, JSON.stringify({ lineStyle: { phase: 0.0, type: 0 } })),
+    encodeStringField(18, groupUuid),
+    encodeStringField(24, JSON.stringify({ a: { KEY_SHAPE_VERSION: 2 }, repo: { KEY_SHAPE_VERSION: 2 } })),
+  ];
+  return encodeLengthDelimited(1, concat(fields));
+}
+/** A picture's file name inside resource/data. */
+export const imageFileName = (img: ParsedImage) => `${img.resId}.${img.ext}`;
 
 export function createPageRecordProtobuf(
   tag: string,
@@ -628,7 +662,10 @@ export async function exportStarNoteArchive(
   // Erased saved strokes leave the archive first (new strokes are appended afterwards)
   const removedNow = [...(doc.removedStrokes ?? [])]; // an erase during the async export below stays queued
   const removedBoxesNow = [...(doc.removedTextBoxes ?? [])];
-  if (removedNow.length || removedBoxesNow.length) await removeFromArchive(zip, doc, removedNow, removedBoxesNow);
+  const removedImagesNow = [...(doc.removedImages ?? [])];
+  // pictures go the way of text boxes (their record is dropped by id); a moved picture is re-added below with its file
+  if (removedNow.length || removedBoxesNow.length || removedImagesNow.length) await removeFromArchive(zip, doc, removedNow, [...removedBoxesNow, ...(removedImagesNow as unknown as ParsedTextBox[])]);
+  for (const img of removedImagesNow) zip.remove(`${docUuid}/resource/data/${imageFileName(img)}`);
   const removedPagesNow = [...(doc.removedPages ?? [])];
   if (removedPagesNow.length) await removePagesFromArchive(zip, docUuid, removedPagesNow);
 
@@ -759,6 +796,18 @@ export async function exportStarNoteArchive(
     newShapesByTile.get(tag)!.push(createTextBoxRecordProtobuf(tb, anchorUuid, groupUuid));
   }
 
+  // New / moved / resized pictures: a type-19 record, and the bytes in resource/data
+  const addedImagesNow = [...(doc.addedImages ?? [])];
+  for (const img of addedImagesNow) {
+    const tag = img.tag;
+    if (!tag || !doc.tiles.has(tag)) continue;
+    let groupUuid = groupUuidByTile.get(tag);
+    if (!groupUuid) { groupUuid = crypto.randomUUID(); groupUuidByTile.set(tag, groupUuid); }
+    zip.file(`${docUuid}/resource/data/${imageFileName(img)}`, img.bytes);
+    if (!newShapesByTile.has(tag)) newShapesByTile.set(tag, []);
+    newShapesByTile.get(tag)!.push(createImageRecordProtobuf(img, docUuid, groupUuid));
+  }
+
   // Bundle shape records into shape/*.zip files
   for (const [tag, records] of newShapesByTile.entries()) {
     const existingShapeFiles = Object.keys(zip.files).filter(
@@ -859,6 +908,9 @@ export async function exportStarNoteArchive(
   for (const t of doc.tiles.values()) t.saved = true;
   doc.addedTextBoxes = (doc.addedTextBoxes ?? []).filter((x) => !addedBoxesNow.includes(x));
   for (const tb of addedBoxesNow) tb.saved = true;
+  doc.removedImages = (doc.removedImages ?? []).filter((x) => !removedImagesNow.includes(x));
+  doc.addedImages = (doc.addedImages ?? []).filter((x) => !addedImagesNow.includes(x));
+  for (const img of addedImagesNow) img.saved = true;
 
   return archiveBytes;
 }
