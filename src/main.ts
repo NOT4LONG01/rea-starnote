@@ -1142,8 +1142,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       setSaveState("saving");
       try {
         const bytes = await exportStarNoteArchive(s.doc, pending);
-        if (s === active) renderer.markSaved(pending, erased);
-        else if (s.view) s.view = { ...s.view, strokes: s.view.strokes.filter((x) => !pending.includes(x)), undoStack: [], redoStack: [] };
+        if (s === active) {
+          renderer.markSaved(pending, erased);
+          if (s.view) s.view = renderer.snapshot(); // parked just before this save (leaving the editor): markSaved made new lists, so the old snapshot would bring the saved strokes back as unsaved ones
+        } else if (s.view) s.view = { ...s.view, strokes: s.view.strokes.filter((x) => !pending.includes(x)), undoStack: [], redoStack: [] };
         const fields = { modified: Date.now(), thumb: renderThumbnail(s.doc) };
         if (s.isNew || !(await library.update(s.item.id, fields, bytes))) {
           s.item = { ...s.item, ...fields };
