@@ -1,7 +1,8 @@
 # REA-StarNote (repo rea-starnote): instructions for Claude
 
 Viewer/editor/sync client for StarNote `.note` files. TypeScript + HTML canvas; Tauri v2 desktop (Windows, Linux) and
-Tauri Android; a Node command line. Version 1.0.0-beta.N on `release/1.0` (fixes only there, merged back into main); `main` is 1.1.0-dev (docs/branching.md). Docs index: `docs/README.md`.
+Tauri Android; a Node command line. Version 1.0.0-beta.N on `release/1.0` (fixes only there, merged back into main); `main` is 1.1.0-dev and
+test builds of 1.1 are `1.1.0-alpha.N` (docs/branching.md). Docs index: `docs/README.md`.
 
 ## What is the product
 The **Android, Windows and Linux apps** (Google Drive + Zotero connectors) and the **CLI**. The localhost web version
@@ -29,8 +30,9 @@ Dependencies point one way: main.ts -> render/data/integrations -> model; cli ->
 - Comments say why; shortcuts are marked `ponytail: <ceiling>, <upgrade path>`. No LICENSE, ESLint or Prettier on purpose.
 
 ## QA bundles (only when the user asks)
-A beta bundle is built from `release/1.0` at its tag; an in-between QA bundle may be built from `main` untagged. Name bundles by the next N.
-`git archive --format=zip --prefix=rea-starnote/ -o artifacts/rea-starnote-qa-N.zip <tag or branch>`, with `qa/RETEST_N.md` written first.
+Name every bundle and APK by its version, never by a number (owner, 2026-10-19): bump to the next `1.1.0-alpha.N` first (docs/branching.md).
+`git archive --format=zip --prefix=rea-starnote/ -o artifacts/rea-starnote-<version>.zip <tag>`, with `qa/RETEST_<version>.md` written first;
+the APK is `artifacts/rea-starnote-<version>.apk`.
 Copy to Yonsei Drive `My Drive/QA` via GVFS (`/run/user/1000/gvfs/google-drive:host=yonsei.ac.kr,user=js.jeong/0AMawZ-Z1xeoLUk9PVA/QA/`),
 verify the sha256 of the new copy, hash-check then `rm` the previous bundle I uploaded (never other Drive files), then message
-the "StarNote Interop Windows QA" session with name, size, SHA-256 and what to test. Latest: qa-22 (feat/handwriting-recognition + main, 1.1.0-dev).
+the "StarNote Interop Windows QA" session with name, size, SHA-256 and what to test. Latest: 1.1.0-alpha.1 (feat/handwriting-recognition + main).

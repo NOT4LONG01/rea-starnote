@@ -39,8 +39,12 @@ Semantic Versioning: `MAJOR.MINOR.PATCH`, pre-releases `1.0.0-beta.N`. The versi
 - Once `main` has work the release branch doesn't (the first 1.1 feature), `main` is `1.1.0-dev`, so a test build says what it is.
   Its Android version code stays below every 1.0 build (`999800`), so a phone can always update from a dev build to the next 1.0 beta
   or release. When 1.0.0 ships and 1.1 work starts for real, `main` drops the explicit code (1.1.0 -> 1001000).
+- **Test builds of 1.1 are `1.1.0-alpha.N`** (owner, 2026-10-19: builds are named by their version). Each build that goes to
+  testers bumps N in all three files, sets `versionCode` to `999800 + N` (still below every 1.0 build), gets a CHANGELOG heading
+  and a local tag `v1.1.0-alpha.N`. Files are named by it: `rea-starnote-1.1.0-alpha.N.zip`, `.apk`, `qa/RETEST_1.1.0-alpha.N.md`.
 
 ## QA bundles
-Built from tracked files only (`git archive`) into `artifacts/rea-starnote-qa-N.zip`, with a matching `qa/RETEST_N.md`. A beta
+Built from tracked files only (`git archive`) into `artifacts/rea-starnote-<version>.zip`, with a matching `qa/RETEST_<version>.md`
+(bundles up to qa-22 were numbered). A beta
 bundle is built from the release branch at its tag; a QA bundle of work in progress may still be built from `main` untagged.
 The full recipe is in [../CLAUDE.md](../CLAUDE.md).

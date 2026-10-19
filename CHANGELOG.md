@@ -3,6 +3,9 @@
 Versions follow [SemVer](https://semver.org). Newest first.
 
 ## Unreleased (towards 1.1)
+
+## 1.1.0-alpha.1 (2026-10-19)
+Test build of the 1.1 work (handwriting search branch with `main`), for Windows QA and the owner's phone.
 ### Added
 - **Find in note** (search button, Ctrl+F): typed text everywhere; handwriting where the device has a recognizer (Windows' own ink recognizer, Google ML Kit on Android), read in the background page by page and kept by the app. Reads Korean and English together by default; *What was read* shows the recognized text; ink written while the bar is open is read a moment later.
 - Imported PDFs keep their text (read at import, kept on the device): Find searches it, and the words the highlighter covers are listed as highlighted passages under *What was read*. Highlighter strokes are no longer sent to the handwriting recognizer.
