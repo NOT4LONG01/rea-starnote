@@ -257,14 +257,9 @@ i[data-icon] svg { width: 100%; height: 100%; }
 #note-canvas { width: 100%; height: 100%; display: block; }
 .canvas-container.drag { box-shadow: inset 0 0 0 3px var(--accent); }
 
-.pagenav {
-  position: absolute; top: 14px; right: 30px;
-  display: flex; align-items: center;
-  border-radius: 20px; background: rgba(24, 24, 24, 0.92);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
-}
-.pagenav button { border: 0; background: transparent; height: 40px; min-width: 44px; display: grid; place-items: center; padding: 0 8px; }
+/* page navigation sits in the top bar beside Fit (it used to float over the page and hid the ink under it) */
+.pagenav { display: flex; align-items: center; flex: none; border-radius: 18px; overflow: hidden; }
+.pagenav button { border: 0; background: transparent; height: 36px; min-width: 36px; display: grid; place-items: center; padding: 0 6px; color: var(--text); }
 .pagenav button:hover { background: #333; }
 .pagenav span { font-size: 13px; color: var(--text); }
 .pagenav i[data-icon] { width: 20px; height: 20px; }
@@ -367,7 +362,6 @@ body.eink-mode .sb-thumb { background: #000; }
   .lib-main { padding: 0 16px 32px; }
   .lib-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 20px 14px; }
   .topbar-title { display: none; }
-  .pagenav { right: 24px; }
 }
 
 /* Zotero dialog (own tab/pane classes so they never collide with the Drive dialog's) */
@@ -491,8 +485,7 @@ body.eink-mode .sb-thumb { background: #000; }
   .toolrow .vsep { width: 28px; height: 1px; margin: 3px 0; }
   .icon-btn.pen-detail { width: 42px; height: 22px; margin: -6px 0 0; }
   .canvas-container { grid-column: 2; grid-row: 2; }
-  .pagenav { top: 8px; right: 14px; }
-  .pagenav button { height: 34px; }
+  .pagenav button { height: 32px; min-width: 32px; }
   .add-page-pill { bottom: 10px; padding: 8px 14px; }
 }
 

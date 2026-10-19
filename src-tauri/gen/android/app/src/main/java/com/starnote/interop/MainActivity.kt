@@ -99,6 +99,10 @@ class MainActivity : TauriActivity() {
     /** Handwriting search: lines of ink as JSON ([[[x, y], ...], ...] per line), a language tag; answers via window.__inkDone. */
     @JavascriptInterface
     fun recognizeInk(id: Int, json: String, lang: String) {
+      try { recognizeInkNow(id, json, lang) } catch (e: Throwable) { answerInk(id, null, "${e.javaClass.simpleName}: ${e.message}") } // never a bare "Java exception"
+    }
+
+    private fun recognizeInkNow(id: Int, json: String, lang: String) {
       val tag = when (lang) { "en" -> "en-US"; else -> lang }
       val modelId = try { DigitalInkRecognitionModelIdentifier.fromLanguageTag(tag) } catch (e: Exception) { null }
       if (modelId == null) { answerInk(id, null, "unavailable: no handwriting model for $lang"); return }
@@ -119,6 +123,10 @@ class MainActivity : TauriActivity() {
      */
     @JavascriptInterface
     fun googleAuthorize(id: Int, scopes: String, interactive: Boolean) {
+      try { googleAuthorizeNow(id, scopes, interactive) } catch (e: Throwable) { answerAuth(id, null, "${e.javaClass.simpleName}: ${e.message}") }
+    }
+
+    private fun googleAuthorizeNow(id: Int, scopes: String, interactive: Boolean) {
       val req = AuthorizationRequest.builder().setRequestedScopes(scopes.split(" ").filter { it.isNotBlank() }.map { Scope(it) }).build()
       runOnUiThread {
         Identity.getAuthorizationClient(this@MainActivity).authorize(req)
