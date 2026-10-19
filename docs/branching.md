@@ -36,12 +36,20 @@ Semantic Versioning: `MAJOR.MINOR.PATCH`, pre-releases `1.0.0-beta.N`. The versi
 - **Android version code** must grow with every build people install, or the phone refuses the update. Tauri derives it
   from the version (`1.0.0` -> 1000000, `1.0.1` -> 1000001) and ignores `-beta.N`, so betas set it explicitly in
   `tauri.conf.json` (`bundle.android.versionCode`): `999900 + N` for `1.0.0-beta.N`. Remove that line for `1.0.0` itself.
-- Once `main` has work the release branch doesn't (the first 1.1 feature), `main` is `1.1.0-dev`, so a test build says what it is.
-  Its Android version code stays below every 1.0 build (`999800`), so a phone can always update from a dev build to the next 1.0 beta
-  or release. When 1.0.0 ships and 1.1 work starts for real, `main` drops the explicit code (1.1.0 -> 1001000).
-- **Test builds of 1.1 are `1.1.0-alpha.N`** (owner, 2026-10-19: builds are named by their version). Each build that goes to
-  testers bumps N in all three files, sets `versionCode` to `999800 + N` (still below every 1.0 build), gets a CHANGELOG heading
-  and a local tag `v1.1.0-alpha.N`. Files are named by it: `rea-starnote-1.1.0-alpha.N.zip`, `.apk`, `qa/RETEST_1.1.0-alpha.N.md`.
+- **Stable and internal (owner, 2026-10-19):** only `x.x.0` versions are stable releases (1.0.0, 1.1.0, ...). Versions in
+  between (`1.0.1`, `1.0.2`, ...) are internal steps: built and tested, never released as stable. 1.0.0 comes from
+  `release/1.0`; the work after it is **1.0.1** (handwriting search, Convert to LaTeX, PDF text and highlights, Android Google
+  sign-in, palm rejection, ...), then **1.0.2** (the AI assistant); the next stable, **1.1.0**, is cut from them when the owner
+  calls it stable (a `release/1.1` branch with betas, like 1.0). The work was first numbered 1.1.0; `1.1.0-alpha.1` (2026-10-19)
+  was its first test build, everything after it is 1.0.1.
+- `main` is the next internal version with `-dev` (now `1.0.1-dev`), so any build says what it is.
+- **Test builds are `<internal version>-alpha.N`** (owner: builds are named by their version, never a number), now
+  `1.0.1-alpha.N`. Each build that goes to testers bumps N in all three files, gets a CHANGELOG heading and a local tag
+  `v<version>`. Files are named by it: `rea-starnote-<version>.zip`, `.apk`, `qa/RETEST_<version>.md`.
+- Its Android `versionCode` is the previous build's plus one (999801 was 1.1.0-alpha.1, so 1.0.1-alpha.1 is 999802): it only
+  grows, and stays below 1.0.0 (1000000), so a phone can always update to the next 1.0 beta or 1.0.0.
+  ponytail: once 1.0.0 is on devices, internal builds need codes above 1000000 (for example 1000000 + 100 x patch + N); decide
+  when 1.0.0 ships.
 
 ## QA bundles
 Built from tracked files only (`git archive`) into `artifacts/rea-starnote-<version>.zip`, with a matching `qa/RETEST_<version>.md`
