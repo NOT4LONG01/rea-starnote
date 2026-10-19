@@ -14,7 +14,7 @@ import { isDesktopApp } from "./integrations/net";
 import { syncLibrary } from "./data/sync";
 import { ZoteroClient, ZoteroItem, ZoteroPdf, ZoteroCollection } from "./integrations/zotero";
 import { exportAnnotatedPdf, safeFileName } from "./render/pdf-export";
-import { aiKey, aiModel, setAiKey, setAiModel, aiReady, visionModels, readMath, readHandwritingLines } from "./integrations/ai";
+import { aiKey, aiModel, setAiKey, setAiModel, aiReady, visionModels, readMath, readHandwritingLines, isRouter } from "./integrations/ai";
 import JSZip from "jszip";
 
 // ---------------------------------------------------------------- icons
@@ -1815,6 +1815,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const todo = pages.filter((p) => idx!.pages[p.tag]?.sig !== inkSignature(p.strokes));
     const read = Object.values(idx.pages).reduce((k, pg) => k + new Set(pg.lines.map((l) => `${l.box.t},${l.box.l}`)).size, 0);
     $("find-ai").classList.toggle("hidden", !todo.length);
+    $("find-ai-model").classList.add("hidden");
     $("find-ai").textContent = `Read handwriting (AI)${todo.length > 1 ? `: ${todo.length} pages` : ""}`;
     await loadPdfText();
     findStatus.textContent = (!pages.length ? "No handwriting on these pages."
@@ -1840,12 +1841,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         const texts = await readHandwritingLines(png, lines.length);
         idx.pages[p.tag] = { sig: inkSignature(p.strokes), lines: lines.map((l, i) => ({ text: texts[i], lang: "ai", box: l.box })).filter((l) => l.text) };
         await library.putInk(id, idx).catch(() => undefined); // kept by the app (never in the .note): a page is read once
-      } catch (e: any) { findStatus.textContent = `Could not read handwriting: ${e?.message ?? e}`; return; }
+      } catch (e: any) {
+        findStatus.textContent = `Could not read handwriting: ${e?.message ?? e}`;
+        $("find-ai").textContent = "Retry"; $("find-ai-model").classList.remove("hidden"); // try again, or with another model
+        return;
+      }
       if (run === find.run) runFind(false);
     }
     if (run === find.run) await loadInk();
   }
   $("find-ai").addEventListener("click", () => void readInkWithAi());
+  $("find-ai-model").addEventListener("click", async () => { if (await openAiSettings()) void readInkWithAi(); });
   /** The passages of each PDF page that the highlighter covers (worked out from the strokes and the page's words). */
   function pdfHighlights(): Record<string, { text: string; box: Box }[]> {
     if (!find.pdf || find.pdfNote !== active?.item.id) return {};
@@ -2203,10 +2209,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         sel.innerHTML = "";
         for (const m of list) sel.appendChild(new Option(`${m.free ? "Free · " : ""}${m.name}`, m.id, false, m.id === current));
         if (current && !list.some((m) => m.id === current)) sel.prepend(new Option(current, current, true, true));
-        status.textContent = `${list.filter((m) => m.free).length} free and ${list.filter((m) => !m.free).length} paid models read images. Free ones are listed first.`;
+        status.textContent = `${list.filter((m) => m.free).length} free and ${list.filter((m) => !m.free).length} paid models read images. Free ones are listed first.` + (current && isRouter(current) ? ` Your model "${current}" is a router: it can pass a picture to a model that cannot see, so pick one from this list.` : "");
       }).catch((e) => { status.textContent = `Could not load the model list (${e.message}); you can type a model id.`; });
       const done = (ok: boolean) => { setShown(modal, false); resolve(ok); };
-      $("ai-save").onclick = () => { setAiKey(key.value); setAiModel(custom.value.trim() || sel.value); done(aiReady()); };
+      $("ai-save").onclick = () => {
+        setAiKey(key.value); setAiModel(custom.value.trim() || sel.value);
+        if (isRouter(aiModel())) showToast(`"${aiModel()}" is a router: it may pass pictures to a model that cannot see them. A model from the list reads images.`, "info");
+        done(aiReady());
+      };
       $("ai-cancel").onclick = $("ai-close").onclick = () => done(false);
       $("ai-forget").onclick = () => { setAiKey(""); key.value = ""; showToast("The OpenRouter key was removed from this device", "info"); };
       setShown(modal, true);

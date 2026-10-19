@@ -53,6 +53,13 @@ ok(await ev(`window.__aiCalls`) === 1 && await aiButton() === "", "opened again:
 await drag([[r.x + 600, r.y + 600], [r.x + 680, r.y + 640]]);
 await sleep(2500);
 ok(await ev(`window.__aiCalls`) === 1 && /Read handwriting/.test(await aiButton()) && /1 page/.test(await status()), `new ink while Find is open: offered for reading, not sent (${await status()})`);
+// a failed read: the reason, a Retry and a way to change the model; Retry then reads the page
+await ev(`window.__fakeAiLines = async () => { throw new Error('test/model:free gave no answer (stop).'); }`);
+await click("#find-ai"); await sleep(1200);
+ok(/Could not read handwriting: test\/model:free gave no answer/.test(await status()) && await aiButton() === "Retry" && !await ev(`document.getElementById('find-ai-model').classList.contains('hidden')`), `a failure says why, with Retry and Change model (${await status()})`);
+await ev(`window.__fakeAiLines = async (png, n) => { window.__aiCalls++; const o = {}; for (let i = 1; i <= n; i++) o[i] = 'third'; return o; }`);
+await click("#find-ai"); await sleep(1500);
+ok(/Handwriting read by the AI/.test(await status()) && await aiButton() === "" && await ev(`document.getElementById('find-ai-model').classList.contains('hidden')`), `Retry reads it (${await status()})`);
 await click("#find-close");
 
 b.close();

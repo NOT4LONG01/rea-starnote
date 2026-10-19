@@ -71,14 +71,34 @@ await test("readHandwritingLines asks for the numbered lines and takes them by n
   await assert.rejects(ai.readHandwritingLines("x", 2), /not the expected list of lines/);
 });
 
+await test("an empty answer names the model and why; a list-of-parts answer is read; the budget leaves room to think", async () => {
+  reply(200, { choices: [{ message: { content: "" }, finish_reason: "length" }] });
+  await assert.rejects(ai.readHandwritingLines("x", 2), /vendor\/model:free ran out of room/);
+  assert.equal(JSON.parse(sent.init.body).max_tokens, 4096);
+  reply(200, { choices: [{ message: { content: null }, finish_reason: "content_filter" }] });
+  await assert.rejects(ai.readMath("x"), /vendor\/model:free gave no answer \(content_filter\)/);
+  reply(200, { choices: [{ message: { content: [{ type: "text", text: '{"1": "a", ' }, { type: "text", text: '"2": "b"}' }] } }] });
+  assert.deepEqual(await ai.readHandwritingLines("x", 2), ["a", "b"]);
+});
+
+await test("a router: tried twice, the error names the model that answered and says to pick one that reads images", async () => {
+  let calls = 0;
+  globalThis.fetch = async (url, init) => { calls++; sent = { url, init }; return new Response(JSON.stringify({ model: "some/text-only-model", choices: [{ message: { content: "" }, finish_reason: "stop" }] }), { status: 200 }); };
+  await assert.rejects(ai.readHandwritingLines("x", 1, { key: "k", model: "openrouter/free" }), /openrouter\/free \(answered by some\/text-only-model\) gave no answer.*A router can pass the picture to a model that cannot see/);
+  assert.equal(calls, 2, "one retry");
+  assert.equal(ai.isRouter("openrouter/auto"), true);
+  assert.equal(ai.isRouter("qwen/qwen2.5-vl-72b-instruct:free"), false);
+});
+
 await test("visionModels keeps image readers only, free ones first", async () => {
   reply(200, { data: [
     { id: "a/text", name: "Text only", architecture: { input_modalities: ["text"] } },
     { id: "b/paid", name: "Alpha", architecture: { input_modalities: ["text", "image"] }, pricing: { prompt: "0.001", completion: "0.002" } },
     { id: "c/free:free", name: "Zeta", architecture: { input_modalities: ["image", "text"] } },
+    { id: "openrouter/free", name: "Free Models Router", architecture: { input_modalities: ["image", "text"] }, pricing: { prompt: "0", completion: "0" } },
   ] });
   const list = await ai.visionModels();
-  assert.deepEqual(list.map((m) => [m.id, m.free]), [["c/free:free", true], ["b/paid", false]]);
+  assert.deepEqual(list.map((m) => [m.id, m.free]), [["c/free:free", true], ["b/paid", false]], "routers are left out");
 });
 
 console.log(`\n${passed} ai tests passed`);

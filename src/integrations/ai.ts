@@ -17,6 +17,8 @@ export const setAiModel = (m: string) => set(MODEL, m.trim());
 export const aiReady = () => !!aiKey() && !!aiModel();
 
 export interface AiModel { id: string; name: string; free: boolean }
+/** OpenRouter's routers ("openrouter/auto", the free-models router): they pick a model per request, maybe one without vision. */
+export const isRouter = (id: string) => /^openrouter\//i.test(id.trim());
 
 /** Models that can read images, free ones first (the list is public: no key needed). */
 export async function visionModels(): Promise<AiModel[]> {
@@ -25,6 +27,7 @@ export async function visionModels(): Promise<AiModel[]> {
   const j = await r.json();
   return (j.data ?? [])
     .filter((m: any) => (m.architecture?.input_modalities ?? []).includes("image"))
+    .filter((m: any) => !isRouter(String(m.id))) // a router is not one model: it may pass the picture to one that can't see it
     .map((m: any) => ({ id: String(m.id), name: String(m.name ?? m.id), free: String(m.id).endsWith(":free") || (Number(m.pricing?.prompt) === 0 && Number(m.pricing?.completion) === 0) }))
     .sort((a: AiModel, b: AiModel) => Number(b.free) - Number(a.free) || a.name.localeCompare(b.name));
 }
@@ -52,7 +55,7 @@ const LINES_PROMPT = (n: number) => `The image shows a page of handwritten notes
 /** Reads a page of handwriting whose lines are numbered 1..n in the picture (see numberedInkImage): the text of each line. */
 export async function readHandwritingLines(png: string, n: number, opts: { key?: string; model?: string } = {}): Promise<string[]> {
   const w = window as any;
-  const raw: string = w.__fakeAiLines ? JSON.stringify(await w.__fakeAiLines(png, n)) : await ask(png, LINES_PROMPT(n), Math.min(4000, 200 + n * 60), opts);
+  const raw: string = w.__fakeAiLines ? JSON.stringify(await w.__fakeAiLines(png, n)) : await ask(png, LINES_PROMPT(n), 4096, opts); // room for models that think before answering
   const json = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   let got: Record<string, unknown>;
   try { got = JSON.parse(json.slice(json.indexOf("{"), json.lastIndexOf("}") + 1)); } catch { throw new Error("The model's answer was not the expected list of lines; try again or pick another model."); }
@@ -63,7 +66,7 @@ export async function readHandwritingLines(png: string, n: number, opts: { key?:
 export async function readMath(png: string, opts: { key?: string; model?: string } = {}): Promise<string> {
   const w = window as any;
   if (w.__fakeAi) return cleanLatex(await w.__fakeAi(png)); // tests
-  return cleanLatex(await ask(png, PROMPT, 1200, opts));
+  return cleanLatex(await ask(png, PROMPT, 2048, opts));
 }
 
 /** One picture and one instruction to the chosen model; the answer's text. Throws with a message the user can act on. */
@@ -71,26 +74,36 @@ async function ask(png: string, prompt: string, maxTokens: number, opts: { key?:
   const key = opts.key ?? aiKey(), model = opts.model ?? aiModel();
   if (!key) throw new Error("Add your OpenRouter key first (More > AI settings).");
   if (!model) throw new Error("Pick a model first (More > AI settings).");
-  let r: Response;
-  try {
-    r = await netFetch(`${API}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "REA-StarNote" },
-      body: JSON.stringify({
-        model, temperature: 0, max_tokens: maxTokens,
-        messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: `data:image/png;base64,${png}` } }] }],
-      }),
-    });
-  } catch (e: any) { throw new Error(`Could not reach OpenRouter (${e?.message ?? "network error"}).`); }
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const why = j?.error?.message ?? `${r.status}`;
-    if (r.status === 401) throw new Error("OpenRouter did not accept the key. Check it in More > AI settings.");
-    if (r.status === 402) throw new Error(`This model needs credits on OpenRouter; pick a free one (":free") in More > AI settings. (${why})`);
-    if (r.status === 429) throw new Error(`OpenRouter's limit for free models was reached; try again later or pick another model. (${why})`);
-    throw new Error(`OpenRouter ${r.status}: ${why}`);
+  for (let attempt = 1; ; attempt++) {
+    let r: Response;
+    try {
+      r = await netFetch(`${API}/chat/completions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "REA-StarNote" },
+        body: JSON.stringify({
+          model, temperature: 0, max_tokens: maxTokens,
+          messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: `data:image/png;base64,${png}` } }] }],
+        }),
+      });
+    } catch (e: any) { throw new Error(`Could not reach OpenRouter (${e?.message ?? "network error"}).`); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const why = j?.error?.message ?? `${r.status}`;
+      if (r.status === 401) throw new Error("OpenRouter did not accept the key. Check it in More > AI settings.");
+      if (r.status === 402) throw new Error(`This model needs credits on OpenRouter; pick a free one (":free") in More > AI settings. (${why})`);
+      if (r.status === 429) throw new Error(`OpenRouter's limit for free models was reached; try again later or pick another model. (${why})`);
+      throw new Error(`OpenRouter ${r.status}: ${why}`);
+    }
+    const choice = j?.choices?.[0], content = choice?.message?.content;
+    // a string, or (some providers) a list of parts
+    const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((p: any) => (typeof p === "string" ? p : p?.text ?? "")).join("") : "";
+    if (text.trim()) return text;
+    const answered = typeof j?.model === "string" && j.model !== model ? `${model} (answered by ${j.model})` : model;
+    // for diagnosis only: never the key or the note
+    console.warn("OpenRouter gave no text", { model, answeredBy: j?.model, attempt, status: r.status, finish: choice?.finish_reason, nativeFinish: choice?.native_finish_reason, usage: j?.usage, provider: j?.provider });
+    if (attempt < 2 && choice?.finish_reason !== "length") continue; // once more: a router may pick another model, a busy one may answer
+    const hint = isRouter(model) ? " A router can pass the picture to a model that cannot see; choose a specific model that reads images (More > AI settings)." : " Try again, or pick another model that reads images (More > AI settings).";
+    if (choice?.finish_reason === "length") throw new Error(`${answered} ran out of room before answering (it thinks first).${hint}`);
+    throw new Error(`${answered} gave no answer (${choice?.error?.message ?? j?.error?.message ?? choice?.finish_reason ?? "no reason given"}).${hint}`);
   }
-  const text = j?.choices?.[0]?.message?.content;
-  if (typeof text !== "string" || !text.trim()) throw new Error("The model gave no answer; try again or pick another model.");
-  return text;
 }
