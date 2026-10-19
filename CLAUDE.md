@@ -2,7 +2,7 @@
 
 Viewer/editor/sync client for StarNote `.note` files. TypeScript + HTML canvas; Tauri v2 desktop (Windows, Linux) and
 Tauri Android; a Node command line. Version 1.0.0-beta.N on `release/1.0` (fixes only there, merged back into main); only x.x.0 versions are stable
-(owner); `main` is the internal 1.0.1-dev, its test builds `1.0.1-alpha.N`, then 1.0.2 (AI assistant); next stable 1.1.0 (docs/branching.md). Docs index: `docs/README.md`.
+(owner); QA builds take the next last number (1.0.1, 1.0.2, ...), the next stable is 1.1.0 (docs/branching.md). Docs index: `docs/README.md`.
 
 ## What is the product
 The **Android, Windows and Linux apps** (Google Drive + Zotero connectors) and the **CLI**. The localhost web version
@@ -30,9 +30,11 @@ Dependencies point one way: main.ts -> render/data/integrations -> model; cli ->
 - Comments say why; shortcuts are marked `ponytail: <ceiling>, <upgrade path>`. No LICENSE, ESLint or Prettier on purpose.
 
 ## QA bundles (only when the user asks)
-Name every bundle and APK by its version, never by a number (owner, 2026-10-19): bump to the next `1.0.1-alpha.N` first (docs/branching.md).
+Name every bundle and APK by its version, never by a number (owner, 2026-10-19): bump the last number first: 1.0.1, 1.0.2, ... (docs/branching.md).
 `git archive --format=zip --prefix=rea-starnote/ -o artifacts/rea-starnote-<version>.zip <tag>`, with `qa/RETEST_<version>.md` written first;
 the APK is `artifacts/rea-starnote-<version>.apk`.
 Copy to Yonsei Drive `My Drive/QA` via GVFS (`/run/user/1000/gvfs/google-drive:host=yonsei.ac.kr,user=js.jeong/0AMawZ-Z1xeoLUk9PVA/QA/`),
 verify the sha256 of the new copy, hash-check then `rm` the previous bundle I uploaded (never other Drive files), then message
-the "StarNote Interop Windows QA" session with name, size, SHA-256 and what to test. Latest: 1.1.0-alpha.1 (feat/handwriting-recognition + main; the last build numbered 1.1, next is 1.0.1-alpha.1).
+the QA sessions (below) with name, size, SHA-256 and what to test. Latest: 1.1.0-alpha.1 (feat/handwriting-recognition + main; the only build numbered 1.1); next QA build is 1.0.1.
+Two QA sessions (find them with ListAgents): "Laptop window QA" (Windows, gets the zip via Drive) and "playground-b5" (Linux app,
+web, Waydroid; gets an unpacked copy in `artifacts/linux-qa-<version>`, builds there, never in the main tree).

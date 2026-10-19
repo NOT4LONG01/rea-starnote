@@ -37,9 +37,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "android": {
-      "versionCode": 999801
-    },
     "category": "Productivity",
     "shortDescription": "Notes, notebooks and PDFs, compatible with StarNote files"
   }

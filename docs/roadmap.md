@@ -2,16 +2,16 @@
 
 | Version | Branch | What | State |
 |---|---|---|---|
-Only `x.x.0` versions are stable; `x.x.1`, `x.x.2`, ... are internal steps toward the next one (owner, 2026-10-19; docs/branching.md).
+Only `x.x.0` versions are stable; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19; docs/branching.md).
 
 | Version | Branch | What | State |
 |---|---|---|---|
 | 1.0.0 (stable) | `release/1.0` | the first release: notes, notebooks and sections, Pages / Infinite, PDF, Drive, Zotero, CLI; Android, Windows, Linux | 1.0.0-beta.1 out (2026-10-16); the real-phone beta check comes next |
-| 1.0.1 (internal) | `main` (+ `feat/handwriting-recognition`) | multi-select, the name REA-StarNote; **handwriting search inside a note**, **Convert to LaTeX**, PDF text and highlights, Android Google sign-in, palm rejection, Hand at start | test builds `1.0.1-alpha.N` (first build was named 1.1.0-alpha.1) |
-| 1.0.2 (internal) | from `main` after 1.0.1 | **AI assistant** (below) | planned |
+| 1.0.x (QA builds) | `main` (+ `feat/handwriting-recognition`) | multi-select, the name REA-StarNote; **handwriting search inside a note**, **Convert to LaTeX**, PDF text and highlights, Android Google sign-in, palm rejection, Hand at start | next QA build 1.0.1 (the first one was named 1.1.0-alpha.1) |
+| a later 1.0.x | `main` | **AI assistant** (below) | planned |
 | 1.1.0 (stable) | `release/1.1`, cut from 1.0.x | the next stable release | when the owner calls it stable |
 
-## 1.0.1: handwriting search inside a note
+## Handwriting search inside a note (first in 1.0.1)
 *Find in note* (a search button in the editor, Ctrl+F): typed text everywhere, handwriting where the platform has a recognizer
 (Windows' own ink recognizer, Google ML Kit on Android; none on Linux and the web). Each match jumps to its page and is highlighted.
 Recognized text is kept by the app, never written into the `.note`. Built on the branch: line grouping and matching (unit tests),
@@ -27,13 +27,13 @@ original ink; on Windows its COM API gives a page's XML with the ink data, which
 Windows-only import (or a CLI step) that reads a section's pages and writes `.note` notes (pages with strokes and typed text),
 tested on copies of the owner's sample sections, which stay private (never in the repo).
 
-## 1.0.2: AI assistant for students and researchers
+## AI assistant for students and researchers (a later 1.0.x)
 An assistant that sees what you wrote and helps with it, through the AI provider *you* connect.
 
 **What it reads (owner, 2026-10-19):** the note's text as the app already indexes it for Find in note, so questions about a
 whole notebook do not need page images: typed text, the handwriting read on the device (Korean and English, line by line),
 an imported PDF's own text, and the passages the highlighter covers on a PDF ("summarise what I highlighted", "quiz me on my
-highlights"). Images of the ink are sent only where text is not enough (math, diagrams). Built in 1.0.1: the index
+highlights"). Images of the ink are sent only where text is not enough (math, diagrams). Built for 1.0.1: the index
 (`src/integrations/handwriting.ts`: lines, PDF lines and words, highlighted passages); *What was read* in the Find bar shows it.
 
 **What it does**
@@ -53,7 +53,7 @@ highlights"). Images of the ink are sent only where text is not enough (math, di
   Nothing is sent in the background. The panel says which provider and model answered.
 - Works on Android, Windows and Linux (it is plain HTTPS, through the app's native networking).
 
-**Open decisions (for when 1.0.2 starts)**
+**Open decisions (for when the assistant starts)**
 - Which models to offer by default, and whether to show the cost of a question before sending.
 - Whether answers are kept with the note (a history per page) or only inserted when asked.
 - Offline: the assistant needs internet; handwriting search (1.0.1) keeps working offline on Windows and Android.

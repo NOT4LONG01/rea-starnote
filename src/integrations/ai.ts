@@ -1,6 +1,6 @@
 /**
  * AI reading through OpenRouter (one key for many models; free models available): the user's own key, typed into the app and kept
- * on this device only. Used for "Convert to LaTeX" (handwritten math -> LaTeX); later the 1.0.2 assistant uses the same connection.
+ * on this device only. Used for "Convert to LaTeX" (handwritten math -> LaTeX); later the AI assistant uses the same connection.
  * Nothing is sent unless the user asks for it.
  */
 import { netFetch } from "./net";

@@ -2,14 +2,14 @@
 
 Versions follow [SemVer](https://semver.org). Newest first.
 
-Only x.x.0 versions are stable releases; x.x.1, x.x.2, ... are internal steps (owner, 2026-10-19).
+Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
 
-## Unreleased (internal 1.0.1)
-- The work planned as 1.1.0 is renumbered **1.0.1** (internal); the AI assistant is 1.0.2; the next stable is 1.1.0.
+## Unreleased (next QA build: 1.0.1)
+- The work planned as 1.1.0 ships to QA as 1.0.x builds; the next stable is 1.1.0. Android version codes follow the version (1.0.1 -> 1000001).
 - A library that a newer build upgraded opens instead of failing ("requested version is less than the existing version").
 
 ## 1.1.0-alpha.1 (2026-10-19)
-First test build of this work, before the renumbering (it is 1.0.1 work), for Windows QA and the owner's phone.
+First QA build of this work, before the renumbering (the next one is 1.0.1), for Windows QA and the owner's phone.
 ### Added
 - **Find in note** (search button, Ctrl+F): typed text everywhere; handwriting where the device has a recognizer (Windows' own ink recognizer, Google ML Kit on Android), read in the background page by page and kept by the app. Reads Korean and English together by default; *What was read* shows the recognized text; ink written while the bar is open is read a moment later.
 - Imported PDFs keep their text (read at import, kept on the device): Find searches it, and the words the highlighter covers are listed as highlighted passages under *What was read*. Highlighter strokes are no longer sent to the handwriting recognizer.
