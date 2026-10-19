@@ -26,6 +26,7 @@ const ICONS: Record<string, string> = {
   spin: '<path d="M12 3a9 9 0 019 9"/>',
   sidebar: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+  split: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',
   notes: '<path d="M12 4H7a3 3 0 00-3 3v10a3 3 0 003 3h10a3 3 0 003-3v-5"/><path d="M18.5 3.5a2 2 0 013 3L12 16l-4 1 1-4z"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
   sort: '<path d="M4 6h12M4 12h8M4 18h4M17 6v12M14 15l3 3 3-3"/>',
@@ -174,7 +175,7 @@ interface Session {
 document.addEventListener("DOMContentLoaded", async () => {
   hydrateIcons();
   const canvas = $<HTMLCanvasElement>("note-canvas");
-  const renderer = new CanvasRenderer(canvas);
+  let renderer = new CanvasRenderer(canvas); // the focused half's renderer (split view has two; see panes)
   if (new URLSearchParams(location.search).has("debug")) (window as any).__starnote = { renderer }; // for performance tests only
   const drive = new GoogleDriveService();
 
@@ -1037,7 +1038,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const inEditor = () => !$("view-editor").classList.contains("hidden");
 
   function pendingStrokes(s: Session) {
-    return s === active ? renderer.getUserStrokes() : s.view?.strokes ?? [];
+    return shownIn(s)?.getUserStrokes() ?? s.view?.strokes ?? [];
   }
   const erasedSaved = (s: Session) => s.doc.removedStrokes ?? []; // erased strokes the archive still holds
   const textChanged = (s: Session) => (s.doc.addedTextBoxes?.length ?? 0) + (s.doc.removedTextBoxes?.length ?? 0) > 0;
@@ -1091,9 +1092,69 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  // ---------- split view: two halves, each its own renderer (pages, zoom, undo); the toolbar and keys act on the focused half
+  const panes: { r: CanvasRenderer | null; s: Session | null; el: HTMLElement }[] = [{ r: renderer, s: null, el: $("pane-0") }, { r: null, s: null, el: $("pane-1") }];
+  let focus = 0, split = false;
+  if ((window as any).__starnote) Object.assign((window as any).__starnote, { panes, sessions }); // tests
+  /** The renderer showing a session right now, or null when it is parked in a tab. */
+  const shownIn = (s: Session) => panes.find((p, i) => p.s === s && (i === focus || split))?.r ?? null;
+  const TOOL_FIELDS = ["activeTool", "penType", "penColor", "penWidth", "stylusOnly", "eraserReach", "shapeKind", "smoothLevel", "pressureSensitivity", "eInkMode"] as const;
+  const HOOKS = ["onChange", "onZoomChange", "onRender", "onTextRequest", "onSelectionChange", "onClipboardChange", "onPen", "onNotice"] as const;
+  function focusPane(i: number) {
+    if (i === focus || !panes[i].r) return;
+    commitInline(); void commitTextEditor(true); // text being typed belongs to the half it was typed in
+    if (findOpen()) closeFind(); // its marks belong to the other half
+    const from = panes[focus].r!, to = panes[i].r!;
+    for (const k of TOOL_FIELDS) (to as any)[k] = (from as any)[k]; // one toolbar: the same pen in both halves
+    if (from.hasSelection()) { from.clearSelection(); from.render(); }
+    focus = i; renderer = to; active = panes[i].s;
+    panes.forEach((p, j) => p.el.classList.toggle("focused", split && j === focus));
+    resetFit(); renderEditorChrome(); renderTabs(); renderToolOptions();
+  }
+  function setSplit(on: boolean) {
+    if (on === split) return;
+    if (!on) {
+      focusPane(0);
+      const p = panes[1];
+      if (p.s && p.r) p.s.view = p.r.snapshot(); // parked in its tab, as if it had been switched away from
+      p.s = null;
+    } else if (!panes[1].r) {
+      const r = new CanvasRenderer($<HTMLCanvasElement>("note-canvas-2"));
+      for (const k of HOOKS) (r as any)[k] = (renderer as any)[k];
+      panes[1].r = r;
+      panes[1].el.addEventListener("pointerdown", () => focusPane(1), { capture: true }); // focus first, then the pen acts there
+      panes[0].el.addEventListener("pointerdown", () => focusPane(0), { capture: true });
+    }
+    split = on;
+    panes[1].el.classList.toggle("hidden", !on);
+    $("panes").classList.toggle("split", on);
+    $("btn-split").classList.toggle("on", on);
+    panes.forEach((p, j) => p.el.classList.toggle("focused", on && j === focus));
+    requestAnimationFrame(() => panes.forEach((p, j) => { if (p.r && (j === 0 || on)) { p.r.resize(); if (p.s) p.r.fit("width"); } })); // each half fits its new width
+    renderTabs();
+  }
+  /** Split on: choose what the other half shows (another open note, or a recent one from the library). */
+  $("btn-split").addEventListener("click", (e) => {
+    if (split) { setSplit(false); return; }
+    const anchor = e.currentTarget as HTMLElement;
+    const open = sessions.filter((t) => t !== active);
+    const recent = items.filter((i) => !isFolder(i) && !i.trashed && !sessions.some((t) => t.item.id === i.id)).sort((a, b) => b.modified - a.modified).slice(0, 8);
+    if (!open.length && !recent.length) { showToast("Open or create a second note first", "info"); return; }
+    const show = (go: () => void) => { closePopover(); setSplit(true); focusPane(1); go(); };
+    openPopover(anchor, (root) => {
+      root.append(el("div", "pop-title", "Show beside it"));
+      for (const t of open) root.appendChild(popItem(t.item.title, "notes", () => show(() => activate(t))));
+      if (open.length && recent.length) root.append(el("div", "pop-sep"));
+      for (const i of recent) root.appendChild(popItem(i.title, i.kind === "pdf" ? "pages" : "notes", () => show(() => void openItem(i.id))));
+    });
+  });
+
   function activate(s: Session) {
+    const there = split ? panes.findIndex((p, i) => i !== focus && p.s === s) : -1;
+    if (there >= 0) { focusPane(there); return; }
     if (active && active !== s) park();
     active = s;
+    panes[focus].s = s;
     showView("editor");
     if (s.view) renderer.restore(s.view);
     else {
@@ -1108,6 +1169,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function leaveToLibrary() {
+    if (split) setSplit(false); // the library is one view; the other half's note stays open in its tab
     if (active) {
       const s = active;
       park();
@@ -1124,6 +1186,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function closeSession(s: Session | undefined, silent = false) {
     if (!s) return;
+    if (split && panes.some((p) => p.s === s)) setSplit(false); // closing a note on screen ends the split first
     if (s === active) park();
     if (!silent && !(s.isNew && !isDirty(s))) await saveSession(s);
     const i = sessions.indexOf(s);
@@ -1148,8 +1211,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       setSaveState("saving");
       try {
         const bytes = await exportStarNoteArchive(s.doc, pending);
-        if (s === active) renderer.markSaved(pending, erased);
-        else if (s.view) s.view = { ...s.view, strokes: s.view.strokes.filter((x) => !pending.includes(x)), undoStack: [], redoStack: [] };
+        const r = shownIn(s);
+        if (r) {
+          r.markSaved(pending, erased);
+          if (s.view) s.view = r.snapshot(); // parked just before this save (leaving the editor): markSaved made new lists, so the old snapshot would bring the saved strokes back as unsaved ones
+        } else if (s.view) s.view = { ...s.view, strokes: s.view.strokes.filter((x) => !pending.includes(x)), undoStack: [], redoStack: [] };
         const fields = { modified: Date.now(), thumb: renderThumbnail(s.doc) };
         if (s.isNew || !(await library.update(s.item.id, fields, bytes))) {
           s.item = { ...s.item, ...fields };
@@ -1197,7 +1263,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const wrap = $("tabs");
     wrap.innerHTML = "";
     for (const s of sessions) {
-      const t = el("div", `tab${s === active ? " active" : ""}${seenTabs.has(s.item.id) ? "" : " enter"}`);
+      const t = el("div", `tab${s === active ? " active" : split && panes.some((p) => p.s === s) ? " shown" : ""}${seenTabs.has(s.item.id) ? "" : " enter"}`);
       seenTabs.add(s.item.id);
       if (isDirty(s)) t.appendChild(el("i", "tab-dirty"));
       t.appendChild(el("span", "", s.item.title));
@@ -2584,7 +2650,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           // Busy = on screen, unsaved, or mid-save. A clean tab that is not showing is released and reloads fresh next time.
           isBusy: (id) => {
             const x = sessions.find((t) => t.item.id === id);
-            return !!x && ((x === active && inEditor()) || isDirty(x) || x.inFlight > 0);
+            return !!x && ((!!shownIn(x) && inEditor()) || isDirty(x) || x.inFlight > 0);
           },
           release: (id) => {
             const i = sessions.findIndex((t) => t.item.id === id);

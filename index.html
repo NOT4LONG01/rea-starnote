@@ -134,6 +134,7 @@
             <button id="page-next" title="Next page"><i data-icon="pnext"></i></button>
           </div>
           <span id="zoom-level" class="zoom-level">100%</span>
+          <button id="btn-split" class="icon-btn" title="Split view: two notes side by side"><i data-icon="split"></i></button>
           <button id="btn-find" class="icon-btn" title="Find in this note (Ctrl+F): typed text, and handwriting where the device can read it"><i data-icon="search"></i></button>
           <button id="btn-page-panel" class="icon-btn" title="Page: format and page actions"><i data-icon="pagecfg"></i></button>
           <button id="btn-pen-settings" class="icon-btn" title="Pen &amp; touch settings"><i data-icon="sliders"></i></button>
@@ -162,7 +163,10 @@
         <div id="tool-options" class="tool-options hidden"></div>
 
         <main class="canvas-container" id="canvas-container">
-          <canvas id="note-canvas"></canvas>
+          <div class="panes" id="panes">
+            <div class="pane" id="pane-0"><canvas id="note-canvas"></canvas></div>
+            <div class="pane hidden" id="pane-1"><canvas id="note-canvas-2"></canvas></div>
+          </div>
           <aside id="page-rail" class="page-rail hidden" aria-label="Pages"></aside>
           <aside id="page-panel" class="page-panel hidden" aria-label="Page settings"></aside>
           <div id="find-bar" class="find-bar hidden" role="search">

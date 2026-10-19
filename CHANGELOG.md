@@ -5,6 +5,8 @@ Versions follow [SemVer](https://semver.org). Newest first.
 Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
 
 ## Unreleased (next QA build: 1.0.1)
+- **Split view**: the split button in the top bar shows a second note (or PDF) beside the current one, each with its own pages, zoom and undo; the toolbar works on the half last touched; Back or the button ends it.
+- Fixed: leaving a note with unsaved ink and reopening it right away showed the last strokes twice (and the next save wrote them twice).
 - The work planned as 1.1.0 ships to QA as 1.0.x builds; the next stable is 1.1.0. Android version codes follow the version (1.0.1 -> 1000001).
 - A library that a newer build upgraded opens instead of failing ("requested version is less than the existing version").
 
