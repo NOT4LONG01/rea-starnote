@@ -1,8 +1,8 @@
 # REA-StarNote (repo rea-starnote): instructions for Claude
 
 Viewer/editor/sync client for StarNote `.note` files. TypeScript + HTML canvas; Tauri v2 desktop (Windows, Linux) and
-Tauri Android; a Node command line. Version 1.0.0-beta.N on `release/1.0` (fixes only there, merged back into main); only x.x.0 versions are stable
-(owner); QA builds take the next last number (1.0.1, 1.0.2, ...), the next stable is 1.1.0 (docs/branching.md). Docs index: `docs/README.md`.
+Tauri Android; a Node command line. **`main` is stable** (only released x.x.0 versions; 1.1.0 is the first); all work and every QA
+build is on the work branch **`dev`**; no release branches (owner). QA builds take the next last number (1.0.4, then 1.1.1, ...) (docs/branching.md). Docs index: `docs/README.md`.
 
 ## What is the product
 The **Android, Windows and Linux apps** (Google Drive + Zotero connectors) and the **CLI**. The localhost web version
@@ -21,7 +21,8 @@ Dependencies point one way: main.ts -> render/data/integrations -> model; cli ->
 
 ## Rules
 - **Never push to GitHub** (`origin` = NOT4LONG01/rea-starnote, private) until the owner says; commit locally. Branch per topic
-  (`feat/` from main, `fix/` from release/1.0 then merged into main), `git merge --no-ff` after `npm run check`; never merge main into release/1.0 (docs/branching.md). SemVer; betas need an explicit Android versionCode.
+  (`feat/`, `fix/` from `dev`, merged into `dev`), `git merge --no-ff` after `npm run check` and the full e2e; nothing is committed on `main`:
+  a stable release merges `dev` into `main` and tags it there (docs/branching.md). Android versionCode is derived from the version.
 - **Secrets:** never print `~/.android/starnote-release.pass`; never write client secrets/API keys to files, chat or Drive
   (the user types them into the app); the Windows QA session must never see keys. Drive/Zotero writes need explicit approval.
 - Saving a `.note` stays non-destructive. Whether real StarNote opens our output is still unverified; do not claim it.
@@ -35,6 +36,6 @@ Name every bundle and APK by its version, never by a number (owner, 2026-10-19):
 the APK is `artifacts/rea-starnote-<version>.apk`.
 Copy to Yonsei Drive `My Drive/QA` via GVFS (`/run/user/1000/gvfs/google-drive:host=yonsei.ac.kr,user=js.jeong/0AMawZ-Z1xeoLUk9PVA/QA/`),
 verify the sha256 of the new copy, hash-check then `rm` the previous bundle I uploaded (never other Drive files), then message
-the QA sessions (below) with name, size, SHA-256 and what to test. Latest: 1.0.3 (feat/handwriting-recognition + main), the candidate for 1.1.0.
+the QA sessions (below) with name, size, SHA-256 and what to test. Latest: 1.0.3 (dev); 1.0.4 next, then 1.1.0 (stable, on main).
 Two QA sessions (find them with ListAgents): "Laptop window QA" (Windows, gets the zip via Drive) and "playground-b5" (Linux app,
 web, Waydroid; gets an unpacked copy in `artifacts/linux-qa-<version>`, builds there, never in the main tree).
