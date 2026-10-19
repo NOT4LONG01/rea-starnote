@@ -398,6 +398,19 @@ export class CanvasRenderer {
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
 
+      // A selection moves from wherever it was made (the side button leaves the pen tool active): a drag that starts inside
+      // its box moves it, with the pen, a mouse or a finger, whatever tool is chosen; the eraser end still erases
+      // (Windows owner, 1.0.1: lassoed ink could not be moved)
+      if (this.selBox && !(e.buttons & 32) && e.button !== 5) {
+        const w = this.toWorld(e);
+        if (this.insideSelBox(w.x, w.y)) { this.beginMove(e, w); return; }
+      }
+      if (this.selImage && !(e.buttons & 32) && e.button !== 5) { // a selected picture too: drag it, or its corner handle
+        const w = this.toWorld(e);
+        if (this.onImageHandle(w)) { this.beginImageDrag(e, w, "resize"); return; }
+        if (this.imageAt(w.x, w.y) === this.selImage) { this.beginImageDrag(e, w, "move"); return; }
+      }
+
       // Stylus-only palm rejection mode:
       if (this.stylusOnly && isTouch) {
         // Touch is restricted strictly to panning
@@ -601,7 +614,7 @@ export class CanvasRenderer {
   private toolFor(e: PointerEvent): "pan" | "pen" | "eraser" | "lasso" | "shape" | "text" {
     if (e.pointerType === "pen") {
       if ((e.buttons & 32) || e.button === 5) return "eraser";
-      if (this.activeTool === "pen" && ((e.buttons & 2) || e.button === 2)) return "lasso";
+      if ((e.buttons & 2) || e.button === 2) return "lasso"; // the side button lassos whatever tool is chosen (the editor starts with the Hand)
     }
     return this.activeTool;
   }

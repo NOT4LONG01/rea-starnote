@@ -50,6 +50,21 @@ ok((await pics()).length === 0, "Delete removes the selected picture");
 await ev(`document.getElementById('tool-undo').click()`); await sleep(300);
 ok((await pics()).length === 1, "and Undo brings it back");
 
+// a finger moves the selected picture with palm rejection on (a finger elsewhere only pans)
+await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+await ev(`window.__starnote.renderer.stylusOnly = true`);
+{
+  const cur = (await pics())[0], cw = await world(cur);
+  const [fx, fy] = await screen((cw.l + cw.r) / 2, (cw.t + cw.b) / 2);
+  await drag([[fx, fy]]); // a tap with the select tool selects it (Undo had cleared the selection)
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: fx, y: fy }] });
+  for (const d of [20, 40, 60]) await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: fx + d, y: fy + d }] });
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await sleep(400);
+  const moved = (await pics())[0];
+  ok(moved.left > cur.left + 20 && moved.top > cur.top + 20, `a finger drags the selected picture (palm rejection on) (${Math.round(cur.left)} -> ${Math.round(moved.left)})`);
+  await ev(`window.__starnote.renderer.stylusOnly = false`);
+}
+
 // drop a second one
 const [dx, dy] = await screen(w.l + 100, w.b + 300);
 await ev(`(async () => { const f = await ${makePic}; const dt = new DataTransfer(); dt.items.add(f); const z = document.getElementById('canvas-container'); z.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, clientX: ${dx}, clientY: ${dy}, bubbles: true, cancelable: true })); })()`);
