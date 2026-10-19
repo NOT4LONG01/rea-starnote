@@ -35,6 +35,6 @@ Name every bundle and APK by its version, never by a number (owner, 2026-10-19):
 the APK is `artifacts/rea-starnote-<version>.apk`.
 Copy to Yonsei Drive `My Drive/QA` via GVFS (`/run/user/1000/gvfs/google-drive:host=yonsei.ac.kr,user=js.jeong/0AMawZ-Z1xeoLUk9PVA/QA/`),
 verify the sha256 of the new copy, hash-check then `rm` the previous bundle I uploaded (never other Drive files), then message
-the QA sessions (below) with name, size, SHA-256 and what to test. Latest: 1.1.0-alpha.1 (feat/handwriting-recognition + main; the only build numbered 1.1); next QA build is 1.0.1.
+the QA sessions (below) with name, size, SHA-256 and what to test. Latest: 1.0.1 (feat/handwriting-recognition + main).
 Two QA sessions (find them with ListAgents): "Laptop window QA" (Windows, gets the zip via Drive) and "playground-b5" (Linux app,
 web, Waydroid; gets an unpacked copy in `artifacts/linux-qa-<version>`, builds there, never in the main tree).

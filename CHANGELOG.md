@@ -4,7 +4,10 @@ Versions follow [SemVer](https://semver.org). Newest first.
 
 Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
 
-## Unreleased (next QA build: 1.0.1)
+## Unreleased (next QA build: 1.0.2)
+
+## 1.0.1 (2026-10-19)
+QA build (internal; only x.x.0 is stable). Everything since 1.1.0-alpha.1:
 - **Handwriting is read only by the AI, when asked** (owner): *Read handwriting (AI)* in the Find bar sends each page's ink, lines numbered, to your OpenRouter model; the on-device recognizers (Windows ink, ML Kit on Android) are removed, so the Android app is smaller and downloads nothing. Typed and PDF text are still searched offline. The language picker is gone (the AI reads Korean and English together).
 - A proper app icon (a note page with a star and handwriting) for Windows, Linux, Android (adaptive, cropped safely by any launcher shape) and the browser tab, from one source (`src-tauri/icons/source/`).
 - **Split view**: the split button in the top bar shows a second note (or PDF) beside the current one, each with its own pages, zoom and undo; the toolbar works on the half last touched; Back or the button ends it.
