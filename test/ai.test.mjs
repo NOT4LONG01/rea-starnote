@@ -51,7 +51,7 @@ await test("readMath sends the picture with the key and model, and returns clean
 });
 
 await test("each failure says what to do", async () => {
-  for (const [status, re] of [[401, /did not accept the key/], [402, /needs credits/], [429, /limit for free models/], [500, /OpenRouter 500: boom/]]) {
+  for (const [status, re] of [[401, /did not accept the key/], [402, /needs credits/], [429, /The free model's limit is used up.*wait for the reset/], [500, /OpenRouter 500: boom/]]) {
     reply(status, { error: { message: "boom" } });
     await assert.rejects(ai.readMath("x"), re);
   }
@@ -88,6 +88,13 @@ await test("a router: tried twice, the error names the model that answered and s
   assert.equal(calls, 2, "one retry");
   assert.equal(ai.isRouter("openrouter/auto"), true);
   assert.equal(ai.isRouter("qwen/qwen2.5-vl-72b-instruct:free"), false);
+});
+
+await test("a limit inside a 200 reply (free models per day) is reported as a used-up limit and NOT retried", async () => {
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return new Response(JSON.stringify({ choices: [{ message: { content: "" }, error: { code: 429, message: "Rate limit exceeded: free-models-per-day" } }] }), { status: 200 }); };
+  await assert.rejects(ai.readHandwritingLines("x", 1, { key: "k", model: "a/b:free" }), /The free model's limit is used up.*free-models-per-day/);
+  assert.equal(calls, 1, "no retry: it would only use up more of the allowance");
 });
 
 await test("visionModels keeps image readers only, free ones first", async () => {

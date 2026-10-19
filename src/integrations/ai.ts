@@ -17,6 +17,10 @@ export const setAiModel = (m: string) => set(MODEL, m.trim());
 export const aiReady = () => !!aiKey() && !!aiModel();
 
 export interface AiModel { id: string; name: string; free: boolean }
+/** What a used-up rate limit or quota says (owner: free models stopped after a few pages). */
+const LIMIT = "The free model's limit is used up. Free models are limited per minute and per day: wait for the reset, add a little credit on OpenRouter, or pick a paid model (More > AI settings).";
+const isLimit = (message: string) => /rate.?limit|quota|limit (exceeded|reached)|too many requests|free-models-per-(day|min)/i.test(message);
+
 /** OpenRouter's routers ("openrouter/auto", the free-models router): they pick a model per request, maybe one without vision. */
 export const isRouter = (id: string) => /^openrouter\//i.test(id.trim());
 
@@ -91,13 +95,15 @@ async function ask(png: string, prompt: string, maxTokens: number, opts: { key?:
       const why = j?.error?.message ?? `${r.status}`;
       if (r.status === 401) throw new Error("OpenRouter did not accept the key. Check it in More > AI settings.");
       if (r.status === 402) throw new Error(`This model needs credits on OpenRouter; pick a free one (":free") in More > AI settings. (${why})`);
-      if (r.status === 429) throw new Error(`OpenRouter's limit for free models was reached; try again later or pick another model. (${why})`);
+      if (r.status === 429 || isLimit(why)) throw new Error(`${LIMIT} (${why})`); // never retried: a retry only uses up more of the allowance
       throw new Error(`OpenRouter ${r.status}: ${why}`);
     }
     const choice = j?.choices?.[0], content = choice?.message?.content;
     // a string, or (some providers) a list of parts
     const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((p: any) => (typeof p === "string" ? p : p?.text ?? "")).join("") : "";
     if (text.trim()) return text;
+    const inner = choice?.error ?? j?.error; // a limit can also come back inside a 200 reply
+    if (inner && (Number(inner.code) === 429 || isLimit(String(inner.message ?? "")))) throw new Error(`${LIMIT} (${inner.message ?? inner.code})`);
     const answered = typeof j?.model === "string" && j.model !== model ? `${model} (answered by ${j.model})` : model;
     // for diagnosis only: never the key or the note
     console.warn("OpenRouter gave no text", { model, answeredBy: j?.model, attempt, status: r.status, finish: choice?.finish_reason, nativeFinish: choice?.native_finish_reason, usage: j?.usage, provider: j?.provider });

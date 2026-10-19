@@ -1924,7 +1924,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         idx.pages[p.tag] = { sig: inkSignature(p.strokes), lines: lines.map((l, i) => ({ text: texts[i], lang: "ai", box: l.box })).filter((l) => l.text) };
         await library.putInk(id, idx).catch(() => undefined); // kept by the app (never in the .note): a page is read once
       } catch (e: any) {
-        findStatus.textContent = `Could not read handwriting: ${e?.message ?? e}`;
+        const left = todo.length - n + 1; // this page and the ones after it; the pages read so far are kept
+        const done = n - 1;
+        findStatus.textContent = `Could not read handwriting: ${e?.message ?? e} ${left} page${left === 1 ? "" : "s"} not read yet${done ? `; the ${done} read ${done === 1 ? "is" : "are"} kept` : ""}.`;
         $("find-ai").textContent = "Retry"; $("find-ai-model").classList.remove("hidden"); // try again, or with another model
         return;
       }
