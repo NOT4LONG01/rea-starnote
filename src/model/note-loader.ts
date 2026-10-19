@@ -44,6 +44,9 @@ export interface ParsedTile {
   saved?: boolean;
 }
 
+/** A piece of an imported PDF page's text and where it is, as fractions of the page (0..1 from the top left). */
+export interface PdfRun { s: string; x: number; y: number; w: number; h: number }
+
 export interface ParsedStroke {
   shapeUuid: string;
   parentUuid: string;

@@ -26,6 +26,12 @@ tested on copies of the owner's sample sections, which stay private (never in th
 ## 1.1.1: AI assistant for students and researchers
 An assistant that sees what you wrote and helps with it, through the AI provider *you* connect.
 
+**What it reads (owner, 2026-10-19):** the note's text as the app already indexes it for Find in note, so questions about a
+whole notebook do not need page images: typed text, the handwriting read on the device (Korean and English, line by line),
+an imported PDF's own text, and the passages the highlighter covers on a PDF ("summarise what I highlighted", "quiz me on my
+highlights"). Images of the ink are sent only where text is not enough (math, diagrams). Built in 1.1.0: the index
+(`src/integrations/handwriting.ts`: lines, PDF lines and words, highlighted passages); *What was read* in the Find bar shows it.
+
 **What it does**
 - *Ask about this*: lasso some ink (or take the whole page), ask a question ("explain this", "check this derivation", "what is
   the next step"); the answer appears in a side panel, and *Insert* puts it on the page as a text box (LaTeX for math).

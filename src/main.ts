@@ -8,7 +8,7 @@ import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serialize
 import { GoogleDriveService, GoogleDriveFile, androidSignIn } from "./integrations/google-drive";
 import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
 import { library, renderThumbnail, renderPageThumbnail, LibraryItem, InkIndex } from "./data/library";
-import { groupIntoLines, inkSignature, findIn, platformRecognizer, inkLanguage, Box } from "./integrations/handwriting";
+import { groupIntoLines, inkSignature, findIn, platformRecognizer, inkLanguage, Box, pdfLines, pdfWords, highlightedPassages, PdfRun } from "./integrations/handwriting";
 import * as handwriting from "./integrations/handwriting";
 import { isFolder, childrenOf, descendantsOf, pathOf, canMoveTo, noteCount, visibleTrash, liveParent, byPlace, orderAt, rootNotebookOf } from "./data/folders";
 import { isDesktopApp } from "./integrations/net";
@@ -923,11 +923,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     for (const item of picked.filter((i) => !isFolder(i))) {
       const bytes = await library.getBytes(item.id);
       if (!bytes) continue;
-      const now = Date.now();
+      const now = Date.now(), id = crypto.randomUUID();
       await library.put(
-        { ...item, id: crypto.randomUUID(), title: `${item.title} copy`, created: now, modified: now, order: undefined, driveId: undefined, syncId: undefined, syncRemote: undefined, syncLocal: undefined, syncParent: undefined },
+        { ...item, id, title: `${item.title} copy`, created: now, modified: now, order: undefined, driveId: undefined, syncId: undefined, syncRemote: undefined, syncLocal: undefined, syncParent: undefined },
         bytes
       );
+      const pdfText = await library.getPdfText(item.id).catch(() => undefined);
+      if (pdfText) await library.putPdfText(id, pdfText); // the copy of a PDF stays searchable
       n++;
     }
     await refreshLibrary();
@@ -979,6 +981,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const bytes = await exportStarNoteArchive(doc, []);
       const item: LibraryItem = { id, title: extra?.title ?? baseName(filename), kind: "pdf", created: now, modified: now, trashed: false, parentId, thumb: renderThumbnail(doc), zotero: extra?.zotero };
       await library.put(item, bytes);
+      if (pdf.pages.some((p) => p.text.length)) await library.putPdfText(id, Object.fromEntries(pdf.pages.map((p, i) => [`Page[${i}-0]`, p.text]))); // same tags as convertPdfToStarNoteDocument
       return item;
     }
     let doc: StarNoteDocument;
@@ -1697,7 +1700,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ---------- Find in note: typed text everywhere, handwriting where the device has a recognizer (read in the background, page by page)
-  const find = { hits: [] as { page: string; box: Box }[], i: -1, index: null as InkIndex | null, noteId: "", run: 0 };
+  const find = { hits: [] as { page: string; box: Box }[], i: -1, index: null as InkIndex | null, noteId: "", run: 0, pdf: null as Record<string, PdfRun[]> | null, pdfLines: {} as Record<string, { text: string; box: Box }[]>, pdfNote: "", pdfLoad: Promise.resolve() };
+  /** A PDF page's text, placed on the page's picture as it is laid out now (pages can move). */
+  const toWorld = (page: Box, b: Box): Box => { const w = page.r - page.l, hh = page.b - page.t; return { l: page.l + b.l * w, r: page.l + b.r * w, t: page.t + b.t * hh, b: page.t + b.b * hh }; };
+  function loadPdfText(): Promise<void> {
+    if (!active || find.pdfNote === active.item.id) return find.pdfLoad; // one load per note, shared by everyone waiting
+    const item = active.item;
+    find.pdfNote = item.id;
+    return (find.pdfLoad = (async () => {
+      find.pdf = item.kind === "pdf" ? (await library.getPdfText(item.id).catch(() => undefined)) ?? null : null;
+      find.pdfLines = Object.fromEntries(Object.entries(find.pdf ?? {}).map(([tag, runs]) => [tag, pdfLines(runs)]));
+    })());
+  }
+  /** What the status line adds for a PDF: its text is searched, or why it can't be. */
+  const pdfStatus = () => active?.item.kind !== "pdf" ? "" : find.pdf ? " PDF text is searched too." : " This PDF's text was not kept (imported before text search, or a scan): import the PDF again to search it.";
   const findInput = $<HTMLInputElement>("find-input"), findStatus = $("find-status"), findLang = $<HTMLSelectElement>("find-lang");
   const findOpen = () => !$("find-bar").classList.contains("hidden") && !$("find-bar").classList.contains("leaving");
   function openFind() {
@@ -1705,7 +1721,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     setShown($("find-bar"), true);
     $("btn-find").classList.add("on");
     findInput.focus(); findInput.select();
-    runFind(false);
+    void loadPdfText().then(() => { runFind(false); renderFindRead(); });
     void readInk();
   }
   function closeFind() {
@@ -1718,7 +1734,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function readInk() {
     if (!active) return;
     const rec = platformRecognizer(), lang = findLang.value, id = active.item.id, run = ++find.run;
-    if (!rec) { findStatus.textContent = "This device can't read handwriting: finding typed text only."; return; }
+    if (!rec) { await loadPdfText(); findStatus.textContent = "This device can't read handwriting: finding typed text only." + pdfStatus(); return; }
     let idx = find.noteId === id ? find.index : null;
     idx ??= (await library.getInk(id).catch(() => undefined)) ?? null;
     if (!idx || idx.lang !== lang) idx = { lang, pages: {} };
@@ -1752,20 +1768,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (todo.length) await library.putInk(id, idx).catch(() => undefined); // kept by the app (never in the .note), reused next time
     const read = Object.values(idx.pages).reduce((k, pg) => k + new Set(pg.lines.map((l) => `${l.box.t},${l.box.l}`)).size, 0);
     const name = lang === "both" ? "한국어 + English" : lang === "ko" ? "한국어" : "English";
-    findStatus.textContent = (read ? `Handwriting read (${name}): ${read} line${read === 1 ? "" : "s"}` : "No handwriting on these pages.") + (notes.size ? ` ${[...notes].join(" ")}` : "");
+    findStatus.textContent = (read ? `Handwriting read (${name}): ${read} line${read === 1 ? "" : "s"}` : "No handwriting on these pages.") + (notes.size ? ` ${[...notes].join(" ")}` : "") + (await loadPdfText(), pdfStatus());
     renderFindRead();
   }
-  /** "What was read": the recognizers' text per line, page by page, so a miss can be told from a misreading. */
+  /** The passages of each PDF page that the highlighter covers (worked out from the strokes and the page's words). */
+  function pdfHighlights(): Record<string, { text: string; box: Box }[]> {
+    if (!find.pdf || find.pdfNote !== active?.item.id) return {};
+    const pages = renderer.pageBoxes(), out: Record<string, { text: string; box: Box }[]> = {};
+    for (const { tag, strokes } of renderer.inkByPage(true)) {
+      const runs = find.pdf[tag], page = pages[tag];
+      if (!runs?.length || !page) continue;
+      const found = highlightedPassages(pdfWords(runs).map((w) => ({ text: w.text, box: toWorld(page, w.box) })), strokes);
+      if (found.length) out[tag] = found;
+    }
+    return out;
+  }
+  /** "What was read": the recognizers' text per line and the highlighted PDF passages, page by page, so a miss can be told
+   * from a misreading (and the passages are what an assistant would be given). */
   function renderFindRead() {
-    const list = $("find-read-list"), order = renderer.pageOrder(), pages = Object.entries(find.index?.pages ?? {}).filter(([, pg]) => pg.lines.length);
+    const list = $("find-read-list"), order = renderer.pageOrder(), hl = pdfHighlights();
+    const ink = find.noteId === active?.item.id ? find.index?.pages ?? {} : {};
+    const tags = [...new Set([...Object.keys(ink).filter((t) => ink[t].lines.length), ...Object.keys(hl)])].sort((a, b) => order.indexOf(a) - order.indexOf(b));
     list.replaceChildren();
-    $("find-read").classList.toggle("hidden", !pages.length);
-    pages.sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
-    for (const [tag, pg] of pages) {
+    $("find-read").classList.toggle("hidden", !tags.length);
+    for (const tag of tags) {
       list.append(el("div", "fr-page", `Page ${order.indexOf(tag) + 1}`));
-      for (const l of [...pg.lines].sort((a, b) => a.box.t - b.box.t || a.box.l - b.box.l)) {
+      const rows = [...(ink[tag]?.lines ?? []).map((l) => ({ ...l, lang: l.lang ?? "" })), ...(hl[tag] ?? []).map((p) => ({ ...p, lang: "hl" }))];
+      for (const l of rows.sort((a, b) => a.box.t - b.box.t || a.box.l - b.box.l)) {
         const row = el("div", "fr-line");
-        row.append(el("span", "fr-lang", l.lang ?? ""), document.createTextNode(l.text));
+        row.append(el("span", "fr-lang", l.lang), document.createTextNode(l.text));
         list.append(row);
       }
     }
@@ -1776,6 +1807,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     const hits: { page: string; box: Box }[] = [];
     if (q.trim()) {
       for (const t of renderer.textByPage()) if (findIn(t.text, q).length) hits.push({ page: t.tag, box: t.box });
+      if (find.pdf && find.pdfNote === active?.item.id) { // an imported PDF's own text, mark narrowed to the match
+        const pages = renderer.pageBoxes();
+        for (const [tag, lines] of Object.entries(find.pdfLines)) {
+          if (!pages[tag]) continue;
+          for (const line of lines) for (const m of findIn(line.text, q)) {
+            const b = toWorld(pages[tag], line.box), w = b.r - b.l;
+            hits.push({ page: tag, box: { ...b, l: b.l + w * m.from, r: b.l + w * m.to } });
+          }
+        }
+      }
       for (const [tag, pg] of Object.entries(find.noteId === active?.item.id ? find.index?.pages ?? {} : {})) {
         for (const line of pg.lines) for (const m of findIn(line.text, q)) {
           const w = line.box.r - line.box.l; // narrow the mark to the part of the line that matched
@@ -1817,7 +1858,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const onChangeBeforeFind = renderer.onChange;
   renderer.onChange = () => {
     onChangeBeforeFind?.();
-    if (findOpen()) { clearTimeout(findIdle); findIdle = window.setTimeout(() => { if (findOpen()) void readInk(); }, 1500); }
+    if (findOpen()) { clearTimeout(findIdle); findIdle = window.setTimeout(() => { if (findOpen()) { renderFindRead(); void readInk(); } }, 1500); }
   };
   findLang.addEventListener("change", () => { try { localStorage.setItem("sn.inklang", findLang.value); } catch { /* private mode */ } find.index = null; find.noteId = ""; void readInk(); });
 

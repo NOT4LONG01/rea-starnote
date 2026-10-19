@@ -5,6 +5,8 @@ Versions follow [SemVer](https://semver.org). Newest first.
 ## Unreleased (towards 1.1)
 ### Added
 - **Find in note** (search button, Ctrl+F): typed text everywhere; handwriting where the device has a recognizer (Windows' own ink recognizer, Google ML Kit on Android), read in the background page by page and kept by the app. Reads Korean and English together by default; *What was read* shows the recognized text; ink written while the bar is open is read a moment later.
+- Imported PDFs keep their text (read at import, kept on the device): Find searches it, and the words the highlighter covers are listed as highlighted passages under *What was read*. Highlighter strokes are no longer sent to the handwriting recognizer.
+- The page navigation (|< 1 / 2 >|) sits in the top bar beside Fit page instead of floating over the page.
 - Palm rejection is on by default once a pen has been used on the device (a finger only pans); a pen-less device still draws with a finger. The choice in Pen & touch is kept.
 - The editor opens with the Hand tool selected.
 - Select several notes and notebooks in the library (select button, Ctrl/⌘-click, or press and hold) and Move to…, Duplicate, Download (one .zip), Colour…, Move to trash; Restore / Delete forever in the Trash.

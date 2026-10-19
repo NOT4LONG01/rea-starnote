@@ -135,3 +135,63 @@ export const inkLanguage = () => {
   try { const v = localStorage.getItem("sn.inklang"); if (v) return v; } catch { /* private mode */ }
   return "both";
 };
+
+// ---------- PDF text: read from the PDF when it is imported (its pages become pictures), searched by Find, and the words a
+// highlighter stroke covers count as highlighted. Kept by the app like the handwriting, never in the .note.
+
+import type { PdfRun } from "../model/note-loader";
+export type { PdfRun };
+
+/** Runs on one baseline joined into lines, in reading order (a run is often a word or a fragment of a line). */
+export function pdfLines(runs: PdfRun[]): { text: string; box: Box }[] {
+  // first gather runs whose baselines nearly agree (a fragment may sit a hair lower), then read each line left to right
+  const rows: PdfRun[][] = [];
+  for (const r of [...runs].sort((a, b) => a.y + a.h - (b.y + b.h))) {
+    const row = rows[rows.length - 1], base = row && row[0].y + row[0].h;
+    if (row && Math.abs(r.y + r.h - base) < 0.5 * Math.min(r.h, row[0].h)) row.push(r); else rows.push([r]);
+  }
+  return rows.map((row) => {
+    row.sort((a, b) => a.x - b.x);
+    let text = "", box: Box | null = null;
+    for (const r of row) {
+      if (box) text += r.x - box.r > 0.15 * r.h && !/\s$/.test(text) ? " " : "";
+      text += r.s;
+      box = box ? union(box, { l: r.x, t: r.y, r: r.x + r.w, b: r.y + r.h }) : { l: r.x, t: r.y, r: r.x + r.w, b: r.y + r.h };
+    }
+    return { text, box: box! };
+  });
+}
+
+/** The words of runs, each with its share of the run's width (by character count: close enough for a mark). */
+export function pdfWords(runs: PdfRun[]): { text: string; box: Box }[] {
+  const out: { text: string; box: Box }[] = [];
+  for (const r of runs) {
+    const n = r.s.length || 1;
+    for (const m of r.s.matchAll(/\S+/g)) {
+      const from = m.index!, to = from + m[0].length;
+      out.push({ text: m[0], box: { l: r.x + (r.w * from) / n, r: r.x + (r.w * to) / n, t: r.y, b: r.y + r.h } });
+    }
+  }
+  return out;
+}
+
+/** The words (world boxes) a highlighter stroke covers: a word counts when the stroke passes within half its width of the
+ * word's middle. One passage per stroke, in reading order. */
+export function highlightedPassages(words: { text: string; box: Box }[], strokes: { points: { x: number; y: number }[]; width: number }[]): { text: string; box: Box }[] {
+  const near = (cx: number, cy: number, s: (typeof strokes)[number]) => {
+    const r = s.width / 2, p = s.points;
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[i + 1] ?? a, dx = b.x - a.x, dy = b.y - a.y, len = dx * dx + dy * dy;
+      const k = len ? Math.max(0, Math.min(1, ((cx - a.x) * dx + (cy - a.y) * dy) / len)) : 0;
+      if (Math.hypot(cx - (a.x + k * dx), cy - (a.y + k * dy)) <= r) return true;
+    }
+    return false;
+  };
+  const out: { text: string; box: Box }[] = [];
+  for (const s of strokes) {
+    const hit = words.filter((w) => near((w.box.l + w.box.r) / 2, (w.box.t + w.box.b) / 2, s))
+      .sort((a, b) => (Math.abs(a.box.t - b.box.t) < 0.5 * (a.box.b - a.box.t) ? a.box.l - b.box.l : a.box.t - b.box.t));
+    if (hit.length) out.push({ text: hit.map((w) => w.text).join(" "), box: hit.map((w) => w.box).reduce(union) });
+  }
+  return out;
+}

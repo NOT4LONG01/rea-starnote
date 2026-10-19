@@ -1,4 +1,4 @@
-import { StarNoteDocument, ParsedTile, ParsedStroke } from "../model/note-loader";
+import { StarNoteDocument, ParsedTile, ParsedStroke, PdfRun } from "../model/note-loader";
 import { drawPageTemplate, spacingOf } from "../model/pages";
 import { isMathText } from "../model/math";
 import { interpolateStrokePoints, generateRibbonGeometry, renderStrokeToCanvas } from "../model/stroke-interpolator";
@@ -99,11 +99,15 @@ export const library = {
       tx.objectStore(META).delete(id);
       tx.objectStore(DATA).delete(id);
       tx.objectStore(INK).delete(id);
+      tx.objectStore(INK).delete(`pdf:${id}`);
     }),
 
   /** Recognized handwriting of a note: per page, its ink fingerprint and the lines read from it. */
   getInk: (id: string) => run<InkIndex | undefined>([INK], "readonly", (tx) => tx.objectStore(INK).get(id)),
   putInk: (id: string, index: InkIndex) => run<void>([INK], "readwrite", (tx) => { tx.objectStore(INK).put(index, id); }),
+  /** An imported PDF's text layer per page tag (its pages are pictures in the note). Only on this device: it is read at import. */
+  getPdfText: (id: string) => run<Record<string, PdfRun[]> | undefined>([INK], "readonly", (tx) => tx.objectStore(INK).get(`pdf:${id}`)),
+  putPdfText: (id: string, pages: Record<string, PdfRun[]>) => run<void>([INK], "readwrite", (tx) => { tx.objectStore(INK).put(pages, `pdf:${id}`); }),
 };
 
 export interface InkIndex {

@@ -1,5 +1,5 @@
 import * as pdfjsLib from "pdfjs-dist";
-import { StarNoteDocument, ParsedTile, fitPageRect } from "../model/note-loader";
+import { StarNoteDocument, ParsedTile, fitPageRect, PdfRun } from "../model/note-loader";
 import { relayout } from "../model/pages";
 
 // Set worker source using Vite-supported URL syntax
@@ -13,6 +13,7 @@ export interface PdfPageRenderResult {
   width: number;
   height: number;
   canvas: HTMLCanvasElement;
+  text: PdfRun[]; // the page's text layer (empty for a scan), for Find and highlights
 }
 
 export interface LoadedPdfDocument {
@@ -73,11 +74,24 @@ export async function loadPdfDocument(
 
     await (page.render(renderContext as any) as any).promise;
 
+    // The text layer, as fractions of the page: the page itself becomes a picture, so this is the only text that remains.
+    // ponytail: rotated text is placed as if upright; fine for search, the mark may sit off for vertical text.
+    const text: PdfRun[] = [];
+    try {
+      for (const it of (await page.getTextContent()).items as any[]) {
+        if (!it.str?.trim()) continue;
+        const m = pdfjsLib.Util.transform(viewport.transform, it.transform);
+        const h = Math.hypot(m[2], m[3]) || 1;
+        text.push({ s: it.str, x: m[4] / viewport.width, y: (m[5] - h) / viewport.height, w: it.width / viewport.width, h: h / viewport.height });
+      }
+    } catch (e) { console.warn("no text layer on page", pageNum, e); }
+
     pages.push({
       pageNumber: pageNum,
       width: targetWidth,
       height: canvasHeight,
       canvas: offscreenCanvas,
+      text,
     });
   }
 

@@ -45,7 +45,10 @@ the top lists them.
   device can read it (Windows with its handwriting language installed, Android; not Linux or the browser). The handwriting is
   read in the background the first time and again only for pages you changed, also while the bar is open (a moment after you
   stop writing). By default each line is read in Korean *and* English and both are searched; the bar can limit it to one.
-  *What was read* (under the bar) shows the recognized text line by line. Enter / ↓ next, Shift+Enter / ↑ previous; matches are highlighted and the view moves to each. The recognized text stays
+  *What was read* (under the bar) shows the recognized text line by line.
+  In an imported PDF, Find searches the PDF's own text too, and the words you mark with the **highlighter** are listed under
+  *What was read* (`hl`) as highlighted passages. The text is read when the PDF is imported and kept on this device; a PDF
+  imported before this version (or a scan without text) needs importing again. Enter / ↓ next, Shift+Enter / ↑ previous; matches are highlighted and the view moves to each. The recognized text stays
   in the app; the `.note` file is not changed.
 - **Page browser:** tap the page number ("2 / 3") to see every page as a thumbnail: tap one to go there, drag to reorder,
   ⋯ for move / add after / delete.

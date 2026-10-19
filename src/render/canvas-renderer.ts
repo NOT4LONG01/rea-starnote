@@ -1037,16 +1037,23 @@ export class CanvasRenderer {
   public isStack(): boolean { return this.doc?.layout === "stack"; }
   public isInfinite(): boolean { return !!this.doc?.infinite; }
 
-  /** The ink of each page in world coordinates (saved strokes and the ones drawn since), for handwriting search. */
-  public inkByPage(): { tag: string; strokes: { points: { x: number; y: number }[] }[] }[] {
+  /** The ink of each page in world coordinates (saved strokes and the ones drawn since), for handwriting search; with
+   * `highlighter`, only the highlighter's strokes (see-through) instead of only the writing. */
+  public inkByPage(highlighter = false): { tag: string; strokes: { points: { x: number; y: number }[]; width: number }[] }[] {
     if (!this.doc) return [];
-    const pages = [...this.doc.tiles.values()].map((t) => ({ tile: t, strokes: t.strokes.map((s) => ({ points: s.points.map((p) => ({ x: p.x + t.rect.left, y: p.y + t.rect.top })) })) }));
+    const want = (s: ParsedStroke) => ((s.alpha ?? 1) < 1) === highlighter;
+    const pages = [...this.doc.tiles.values()].map((t) => ({ tile: t, strokes: t.strokes.filter(want).map((s) => ({ width: s.width, points: s.points.map((p) => ({ x: p.x + t.rect.left, y: p.y + t.rect.top })) })) }));
     for (const st of this.userDrawnStrokes) {
+      if (!want(st)) continue;
       const p0 = st.points[Math.floor(st.points.length / 2)];
       const home = p0 && pages.find(({ tile }) => { const r = tile.pageRect ?? tile.rect; return p0.x >= r.left && p0.x < r.right && p0.y >= r.top && p0.y < r.bottom; });
-      if (home) home.strokes.push({ points: st.points.map((p) => ({ x: p.x, y: p.y })) });
+      if (home) home.strokes.push({ width: st.width, points: st.points.map((p) => ({ x: p.x, y: p.y })) });
     }
     return pages.filter((p) => p.strokes.length).map((p) => ({ tag: p.tile.pageTag, strokes: p.strokes }));
+  }
+  /** Where each page's paper (a PDF page's picture) is, in world coordinates: PDF text is placed by it. */
+  public pageBoxes(): Record<string, { l: number; t: number; r: number; b: number }> {
+    return Object.fromEntries([...(this.doc?.tiles.values() ?? [])].map((t) => { const r = t.pageRect ?? t.rect; return [t.pageTag, { l: r.left, t: r.top, r: r.right, b: r.bottom }]; }));
   }
   /** Typed text boxes in world coordinates, for "Find in note". */
   public textByPage(): { tag: string; text: string; box: { l: number; t: number; r: number; b: number } }[] {
