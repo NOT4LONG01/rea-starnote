@@ -1572,13 +1572,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (tool !== "lasso" && (renderer.hasSelection() || renderer.hasPicture())) { renderer.clearSelection(); renderer.render(); }
     for (const t of TOOLS) $(`tool-${t}`).classList.toggle("active", t === tool);
     $("canvas-container").style.cursor = tool === "pan" ? "grab" : tool === "eraser" ? "cell" : "crosshair";
-    if (changed) optionsOpen = true; // choosing a tool shows its options
+    if (changed) optionsOpen = false; // choosing a tool only selects it: its options open on a second tap, so nothing covers the page unasked (Linux QA 1.0.1 F-A: a stroke started on the panel was lost)
     renderToolOptions();
   }
   let lastEraserTap = 0;
   for (const t of TOOLS) {
     $(`tool-${t}`).addEventListener("click", () => {
-      if (t !== renderer.activeTool) { lastEraserTap = t === "eraser" ? Date.now() : 0; setTool(t); return; }
+      if (t !== renderer.activeTool) { lastEraserTap = 0; setTool(t); return; } // the tap that picks the eraser is not half of a double tap (a second tap opens its options; a double tap on the eraser in use clears the page)
       if (t === "eraser" && Date.now() - lastEraserTap < 450) { lastEraserTap = 0; clearCurrentPage(); return; } // double tap
       lastEraserTap = t === "eraser" ? Date.now() : 0;
       optionsOpen = !optionsOpen; // tapping the tool in use shows or hides its options

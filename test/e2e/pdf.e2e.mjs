@@ -48,6 +48,7 @@ ok(scr.x1 > scr.x0 && scr.w > 10, `the match is marked where the word is (${Math
 await ev(`document.getElementById('find-close').click()`); await sleep(300);
 
 await ev(`document.getElementById('tool-pen').click()`); await sleep(300);
+await ev(`document.getElementById('tool-pen').click()`); await sleep(300); // a second tap opens the pen's options
 await ev(`document.querySelector('#tool-options button[title="Highlighter"]').click()`); await sleep(300);
 const quickStart = scr.x0 - scr.w * 1.15; // "quick " sits just left of "brown"
 await drag([[quickStart, scr.y], [(quickStart + scr.x1) / 2, scr.y], [scr.x1 - 2, scr.y]]);

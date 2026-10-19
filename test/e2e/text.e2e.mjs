@@ -14,6 +14,8 @@ const state = () => ev(`JSON.stringify({ ghost: document.activeElement?.id, edit
 await newNote();
 const blank = await dark("#note-canvas"); // an empty page already has ruling
 await click("tool-text");
+ok(await ev(`document.getElementById('tool-options').classList.contains('hidden')`), "choosing the Text tool only selects it (nothing opens over the page)");
+await click("tool-text"); // a second tap opens its options (size, bold, italic)
 const box = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse);
 const at = [box.x + box.width / 2 - 100, box.y + 260];
 
@@ -66,7 +68,7 @@ ok(await dark("#note-canvas") > blank + 200 && (await state()).ghost !== "text-g
 // Math: a docked panel with the LaTeX source, the formula typeset live on the page
 const panel = () => ev(`(() => { const p = document.getElementById('text-editor'); const r = p.getBoundingClientRect(); return JSON.stringify({ hidden: p.classList.contains('hidden'), left: r.left, right: r.right, err: !document.getElementById('te-error').classList.contains('hidden'), errText: document.getElementById('te-error').textContent, focus: document.activeElement?.id }); })()`).then(JSON.parse);
 const base = await dark("#note-canvas");
-await click("tool-text");
+await click("tool-text"); await click("tool-text"); // select, then open its options
 await ev(`[...document.querySelectorAll('#tool-options .opt-chip')].find(e => e.textContent === 'Math').click()`); await sleep(200);
 const spot = [at[0] - 100, at[1] + 300];
 await drag([spot]);

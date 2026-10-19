@@ -13,7 +13,7 @@ ok(await ev(`(() => { const r = document.querySelector('#page-modal .modal-card'
 await click('#pm-kind button[data-v="pages"]');
 await click("#pm-ok"); await sleep(1500);
 ok(await overflow() <= 0, `the editor fits (overflow ${await overflow()} px)`);
-await click("#tool-text");
+await click("#tool-text"); await click("#tool-text"); // select, then open its options
 await ev(`[...document.querySelectorAll('#tool-options .opt-chip')].find(e => e.textContent === 'Math').click()`); await sleep(200);
 const box = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse);
 await drag([[box.x + 120, box.y + 120]]); await sleep(500);
