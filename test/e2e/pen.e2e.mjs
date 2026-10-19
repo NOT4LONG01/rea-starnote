@@ -3,7 +3,7 @@ import { launch, ok, finish } from "./cdp.mjs";
 
 const b = await launch({ query: "?debug" });
 const { ev, drag, newNote, sleep } = b;
-await newNote();
+await newNote(); await ev(`document.getElementById('tool-pen').click()`); await sleep(200); // the app starts with the Hand tool
 const box = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse);
 const pts = [...Array(60)].map((_, i) => [box.x + 200 + i * 6, box.y + 250 + Math.sin(i / 6) * 40]);
 let seenRaw = 0;

@@ -1,46 +1,51 @@
 # Branching, versions and releases
 
-`main` is always green (`npm run check` passes) and holds the newest work. From 1.0 on, each release line has a branch of its
-own so the version people use can get fixes while `main` moves on. `release/1.0` was cut at `v1.0.0-beta.1` (2026-10-16), after
-Windows QA bundle 15 passed.
+**Owner, 2026-10-19:** `main` is stable; work happens on a work branch; no release branches. `main` only moves when a stable
+version is released, so every commit on it is a released x.x.0 version. All work, and every QA build, is on **`dev`**.
+`release/1.0` was removed (its 1.0.0-beta.1 stays as the tag `v1.0.0-beta.1`). **1.0.0 is the first stable version** (owner):
+the code of QA build 1.0.4 once it checks out, released with a README for users and the MIT license. QA builds after it go on
+from 1.0.5 (1.0.1-1.0.4 are taken), up to 1.1.0.
 
 ## Branches
 | Branch | Use | Lifetime |
 |---|---|---|
-| `main` | development of the next version | permanent |
-| `release/1.0` | the 1.0 line: betas, 1.0.0, then 1.0.x fixes. Fixes only, no features | until 1.0 is no longer supported |
-| `feat/<name>` | a feature, cut from `main`, merged into `main` | merged then deleted |
-| `fix/<name>` | a fix, cut from the oldest branch that needs it (usually `release/1.0`), merged there and then into `main` | merged then deleted |
-| `docs/<name>` | documentation only, like `feat/` | merged then deleted |
+| `main` | stable releases only (`x.x.0`), each tagged `v<version>` | permanent |
+| `dev` | the work branch: features and fixes land here; QA builds (`x.y.1`, `x.y.2`, ...) are tagged here | permanent |
+| `feat/<name>`, `fix/<name>`, `docs/<name>` | one topic, cut from `dev`, merged into `dev` | merged, then deleted |
 
 ```
-main ──●──●──●───────●──●── (features for 1.1)
-        \           /
-release/1.0 ●──●──●──●  tags: v1.0.0-beta.1 … v1.0.0, v1.0.1
-             \  /
-           fix/xyz
+main  ───────────────────────●  v1.0.0 ──────────────●  v1.1.0
+                            /                       /
+dev   ──●──●──●──●──●──●──●──●──●──●──●──●──●──●──●──
+           v1.0.3  v1.0.4    v1.0.5 v1.0.6 ...       (QA builds)
+             \    /
+            feat/xyz
 ```
 
 ## Flow
-1. Topic branch: `git switch -c feat/<name> main` (or `fix/<name> release/1.0`); commit small, with messages saying why.
-2. `npm run check` before every merge (CI runs the same).
-3. Merge with `git merge --no-ff`; delete the topic branch.
-4. A fix merged into `release/1.0` is then merged into `main` (`git switch main && git merge --no-ff release/1.0`), so `main`
-   never loses a fix. Never merge `main` into a release branch: that would bring unreleased features along.
-5. Push only when the owner decides.
+1. Topic branch from `dev`: `git switch -c feat/<name> dev`; small commits whose messages say why.
+2. `npm run check` and the full `npm run test:e2e` before every merge.
+3. `git merge --no-ff` into `dev`; delete the topic branch.
+4. **QA build** (only when the owner asks): on `dev`, bump the last number, add a CHANGELOG heading, commit, tag `v<version>`,
+   build the bundle and the APK (see ../CLAUDE.md).
+5. **Stable release** (when the owner calls a QA build stable): on `dev`, set the version to the stable number (same code as
+   the approved QA build, nothing else; the first is 1.0.0, then 1.1.0, ...), add its CHANGELOG heading, commit; merge `dev`
+   into `main` (`git switch main && git merge --no-ff dev`), tag `v<version>` on `main`. `dev` goes on with QA builds.
+6. Nothing is committed on `main` directly. A fix for a stable version goes through `dev`, a QA build and the next stable.
+7. Push only when the owner decides.
 
 ## Versions and tags
-Semantic Versioning: `MAJOR.MINOR.PATCH`, pre-releases `1.0.0-beta.N`. The version is in `package.json`,
-`src-tauri/Cargo.toml` (Tauri takes the app version from it) and `src-tauri/tauri.conf.json`: keep all three equal.
-- A beta or release is made on `release/1.0`: bump the version, add a CHANGELOG heading, commit, tag `v<version>`.
-- **Android version code** must grow with every build people install, or the phone refuses the update. Tauri derives it
-  from the version (`1.0.0` -> 1000000, `1.0.1` -> 1000001) and ignores `-beta.N`, so betas set it explicitly in
-  `tauri.conf.json` (`bundle.android.versionCode`): `999900 + N` for `1.0.0-beta.N`. Remove that line for `1.0.0` itself.
-- Once `main` has work the release branch doesn't (the first 1.1 feature), `main` is `1.1.0-dev`, so a test build says what it is.
-  Its Android version code stays below every 1.0 build (`999800`), so a phone can always update from a dev build to the next 1.0 beta
-  or release. When 1.0.0 ships and 1.1 work starts for real, `main` drops the explicit code (1.1.0 -> 1001000).
+Semantic Versioning. The version is in `package.json` (and `package-lock.json`), `src-tauri/Cargo.toml` (and `Cargo.lock`) and
+`src-tauri/tauri.conf.json`: keep them equal.
+- **Only `x.x.0` versions are stable** (owner, 2026-10-19). Every QA build between them takes the next last number (no `-alpha`
+  or `-beta`): 1.0.1-1.0.4 before 1.0.0 (they were made first), 1.0.5, 1.0.6, ... after it, then 1.1.1, ... after 1.1.0. Files are named by the version:
+  `rea-starnote-<version>.zip`, `.apk`, `qa/RETEST_<version>.md`. Between builds the files keep the last built version.
+- **Android version code** must grow with every build, or a phone refuses the update. Up to 1.0.4 it is derived from the
+  version (1.0.3 -> 1000003, 1.0.4 -> 1000004). From 1.0.0 on it is **explicit** in `tauri.conf.json`
+  (`bundle.android.versionCode`), each build the previous one + 1 (1.0.0 -> 1000005, 1.0.5 -> 1000006, ...), because 1.0.0 comes
+  after 1.0.4 although its number is smaller. (History: the 1.0.0 betas used 999900 + N, `1.1.0-alpha.1` used 999801.)
+- History: the work was first numbered 1.1.0 (`1.1.0-alpha.1`, 2026-10-19), then shipped to QA as 1.0.1 to 1.0.4, and becomes 1.0.0.
 
 ## QA bundles
-Built from tracked files only (`git archive`) into `artifacts/rea-starnote-qa-N.zip`, with a matching `qa/RETEST_N.md`. A beta
-bundle is built from the release branch at its tag; a QA bundle of work in progress may still be built from `main` untagged.
-The full recipe is in [../CLAUDE.md](../CLAUDE.md).
+Built from tracked files only (`git archive`) at the build's tag on `dev` into `artifacts/rea-starnote-<version>.zip`, with
+`qa/RETEST_<version>.md` written first; a stable bundle comes from `main` at its tag. The full recipe is in [../CLAUDE.md](../CLAUDE.md).

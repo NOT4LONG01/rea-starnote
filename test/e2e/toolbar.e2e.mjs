@@ -1,7 +1,7 @@
 // Toolbar behaviour in a real browser: one row, a popover for the tool's choices, pen settings popover, pen icon follows the type.
 import { launch, ok, finish } from "./cdp.mjs";
 
-const b = await launch({ width: 1280, height: 800 });
+const b = await launch({ width: 1280, height: 800, query: "?debug" });
 const { ev, drag, newNote, sleep } = b;
 const click = async (id) => { await ev(`document.getElementById('${id}').click()`); await sleep(200); };
 // opens a tool's popover whatever state it is in (the first tap opens, a tap on the active tool toggles)
@@ -13,6 +13,8 @@ ok((await pop()).hidden, "no second bar: nothing but the tool row until a tool's
 ok(await ev(`document.querySelectorAll('.toolrow .swatch, .toolrow .wdot').length`) === 0, "the toolbar row holds only buttons");
 
 await click("tool-pen");
+ok((await pop()).hidden, "choosing a tool only selects it: nothing opens over the page (Linux QA 1.0.1 F-A)");
+await click("tool-pen"); // a second tap opens its options
 let p = await pop();
 const penBtn = await ev(`JSON.stringify(document.getElementById('tool-pen').getBoundingClientRect())`).then(JSON.parse);
 ok(!p.hidden && p.icons.join() === "Pen,Brush,Highlighter" && p.swatches.length === 4 && p.sizes === 5, `Pen popover: 3 icon-only pens, 4 colors, 5 sizes (${p.swatches.join(" ")})`);
@@ -79,6 +81,20 @@ ok(f.title === "Fit page width", `after fitting the height the button offers the
 await click("btn-fit");
 f = await fitInfo();
 ok(f.title === "Fit page height" && f.zoom !== z1, `then the width (${f.zoom}), and it offers the height again`);
+
+// the eraser: picking it and tapping it again opens its options (it does not clear the page); a double tap on the eraser
+// already in use clears the page (one Undo brings it back)
+const ink = () => ev(`[...window.__starnote.renderer.doc.tiles.values()].reduce((k, t) => k + t.strokes.length, 0) + window.__starnote.renderer.getUserStrokes().length`);
+await click("tool-pen"); await click("tool-pen"); if (!(await pop()).hidden) await click("tool-pen");
+{ const r = await ev(`JSON.stringify(document.getElementById('note-canvas').getBoundingClientRect())`).then(JSON.parse); await drag([[r.x + 500, r.y + 400], [r.x + 600, r.y + 440]]); }
+const inkBefore = await ink();
+await ev(`document.getElementById('tool-eraser').click(); document.getElementById('tool-eraser').click()`); await sleep(400); // pick it, then a quick second tap
+ok(await ink() === inkBefore && inkBefore > 0 && !(await pop()).hidden, `picking the eraser and tapping it again opens its options, the page keeps its ink (${inkBefore})`);
+await sleep(600); await click("tool-eraser"); await sleep(600); // close its options again (taps within 450 ms count as a double tap)
+await ev(`document.getElementById('tool-eraser').click(); document.getElementById('tool-eraser').click()`); await sleep(400); // a double tap on the eraser in use
+ok(await ink() === 0 && (await pop()).hidden, `a double tap on the eraser in use clears the page, and leaves no options panel over it (ink ${await ink()}, panel hidden ${(await pop()).hidden})`);
+await click("tool-undo");
+ok(await ink() === inkBefore, "and Undo brings the ink back");
 
 b.close();
 finish();

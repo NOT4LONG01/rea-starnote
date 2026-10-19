@@ -28,11 +28,33 @@ export interface ParsedTextBox {
   isItalic?: boolean;
 }
 
+/**
+ * A picture on a page: StarNote shape type 19 (Onyx SHAPE_IMAGE), its bytes in `<docUuid>/resource/data/<file>`, field 14 the
+ * resource JSON. Inferred from Onyx's SDK; not yet checked against a picture StarNote itself made (docs/format-spec.md).
+ */
+export interface ParsedImage {
+  tag?: string;      // the tile it sits on
+  saved?: boolean;   // false while new (not in the archive yet)
+  shapeUuid: string;
+  resId: string;     // the resource id (also its file name)
+  ext: string;       // png, jpg, webp, ...
+  bytes: Uint8Array;
+  rect: { left: number; top: number; right: number; bottom: number }; // tile-local
+  bitmap?: CanvasImageSource | null; // decoded for drawing (none in the command line)
+}
+
+/** Decodes picture bytes for drawing, where the platform can (browser, apps); null in Node. */
+export async function decodeImage(bytes: Uint8Array): Promise<CanvasImageSource | null> {
+  if (typeof createImageBitmap !== "function") return null;
+  try { return await createImageBitmap(new Blob([bytes as BlobPart])); } catch { return null; }
+}
+
 export interface ParsedTile {
   pageTag: string;     // e.g. "Page[0-0]", "Page[-5--1]"
   rect: { left: number; top: number; right: number; bottom: number };
   strokes: ParsedStroke[];
   textBoxes?: ParsedTextBox[];
+  images?: ParsedImage[];
   backgroundImage?: HTMLCanvasElement | ImageBitmap | HTMLImageElement;
   /** Real page area (world coords) when a background image has a different aspect than the square tile. */
   pageRect?: { left: number; top: number; right: number; bottom: number };
@@ -43,6 +65,9 @@ export interface ParsedTile {
   /** False for a page added since the last save (it has nothing in the archive to delete). */
   saved?: boolean;
 }
+
+/** A piece of an imported PDF page's text and where it is, as fractions of the page (0..1 from the top left). */
+export interface PdfRun { s: string; x: number; y: number; w: number; h: number }
 
 export interface ParsedStroke {
   shapeUuid: string;
@@ -70,6 +95,8 @@ export interface StarNoteDocument {
   /** Text boxes created / deleted since the last save (a changed box is one of each). */
   addedTextBoxes?: ParsedTextBox[];
   removedTextBoxes?: ParsedTextBox[];
+  addedImages?: ParsedImage[];
+  removedImages?: ParsedImage[];
   isPdfImport?: boolean;
   /** "stack": finite pages one under the other (managed: add, delete, reorder). Unset: StarNote's free-form canvas of tiles. */
   layout?: "stack";
@@ -167,6 +194,7 @@ interface ShapeMeta { color: string; width: number; shapeType: number; alpha?: n
 interface ShapeIndexResult {
   shapeMap: Map<string, ShapeMeta>;
   textBoxesByTile: Map<string, ParsedTextBox[]>;
+  pendingImages: { tag: string; shapeUuid: string; f7Json: string; f14Json: string }[]; // pictures, resolved once the doc id is known
 }
 
 /**
@@ -175,6 +203,7 @@ interface ShapeIndexResult {
 async function indexShapesFromZip(zip: JSZip): Promise<ShapeIndexResult> {
   const shapeMap = new Map<string, ShapeMeta>();
   const textBoxesByTile = new Map<string, ParsedTextBox[]>();
+  const pendingImages: { tag: string; shapeUuid: string; f7Json: string; f14Json: string }[] = [];
 
   for (const [filepath, fileEntry] of Object.entries(zip.files)) {
     if (!filepath.includes("/shape/") || !filepath.endsWith(".zip") || fileEntry.dir) continue;
@@ -209,6 +238,7 @@ async function indexShapesFromZip(zip: JSZip): Promise<ShapeIndexResult> {
         let f10Text = "";
         let f11Json = "";
         let f22Html = "";
+        let f14Json = "";
 
         while (off.val < recordEnd) {
           const subKey = readVarint(pbBytes, off);
@@ -235,6 +265,7 @@ async function indexShapesFromZip(zip: JSZip): Promise<ShapeIndexResult> {
             else if (f === 10) f10Text = textVal;
             else if (f === 11) f11Json = textVal;
             else if (f === 22) f22Html = textVal;
+            else if (f === 14) f14Json = textVal;
           } else if (w === 5) {
             if (f === 5) {
               const b = pbBytes.subarray(off.val, off.val + 4);
@@ -258,6 +289,8 @@ async function indexShapesFromZip(zip: JSZip): Promise<ShapeIndexResult> {
         }
         if (shapeUuid) shapeMap.set(shapeUuid, { color: colorHex, width, shapeType, alpha, sens });
         if (linkUuid) shapeMap.set(linkUuid, { color: colorHex, width, shapeType, alpha, sens });
+
+        if (shapeType === 19 && tileTag && shapeUuid) pendingImages.push({ tag: tileTag, shapeUuid, f7Json, f14Json }); // a picture: resolved below
 
         // Recover Type 16 Text Boxes
         if (shapeType === 16 && tileTag) {
@@ -319,7 +352,7 @@ async function indexShapesFromZip(zip: JSZip): Promise<ShapeIndexResult> {
     }
   }
 
-  return { shapeMap, textBoxesByTile };
+  return { shapeMap, textBoxesByTile, pendingImages };
 }
 
 /**
@@ -450,7 +483,7 @@ export async function loadStarNoteArchive(fileData: ArrayBuffer): Promise<StarNo
   }
 
   // 3. Index shape attributes and text boxes from shape/*.zip
-  const { shapeMap, textBoxesByTile } = await indexShapesFromZip(zip);
+  const { shapeMap, textBoxesByTile, pendingImages } = await indexShapesFromZip(zip);
 
   for (const [tag, boxes] of textBoxesByTile.entries()) {
     const tile = getOrCreateTile(tag);
@@ -531,6 +564,26 @@ export async function loadStarNoteArchive(fileData: ArrayBuffer): Promise<StarNo
         console.warn(`Could not load background image for ${tag}:`, err);
       }
     }
+  }
+
+  // 6. Pictures (type 19): the bytes are in resource/data, named by the resource JSON in field 14
+  for (const p of pendingImages) {
+    const tile = tiles.get(p.tag);
+    if (!tile) continue;
+    try {
+      const res = JSON.parse(p.f14Json || "{}");
+      const ext = String(res.fileExtension || "png").toLowerCase();
+      const rel = String(res.relativePath || (res.uniqueId ? `/${res.uniqueId}.${ext}` : ""));
+      const file = rel && (zip.file(`${docUuid}/resource/data${rel.startsWith("/") ? rel : `/${rel}`}`) ?? Object.values(zip.files).find((f) => !f.dir && f.name.endsWith(`/resource/data${rel.startsWith("/") ? rel : `/${rel}`}`)));
+      if (!file) { console.warn(`Picture ${p.shapeUuid}: its file ${rel} is missing`); continue; }
+      const r = JSON.parse(p.f7Json || "{}");
+      const bytes = await file.async("uint8array");
+      (tile.images ??= []).push({
+        tag: p.tag, saved: true, shapeUuid: p.shapeUuid, resId: String(res.uniqueId || rel.replace(/^\/|\.[^.]*$/g, "")), ext, bytes,
+        rect: { left: Number(r.left) || 0, top: Number(r.top) || 0, right: Number(r.right) || 0, bottom: Number(r.bottom) || 0 },
+        bitmap: await decodeImage(bytes),
+      });
+    } catch (err) { console.warn(`Could not load picture ${p.shapeUuid}:`, err); }
   }
 
   const doc: StarNoteDocument = {

@@ -7,13 +7,14 @@ import { loadStarNoteArchive, StarNoteDocument, ParsedTextBox, ParsedStroke } fr
 import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serializer";
 import { GoogleDriveService, GoogleDriveFile, androidSignIn } from "./integrations/google-drive";
 import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
-import { library, renderThumbnail, renderPageThumbnail, LibraryItem } from "./data/library";
+import { library, renderThumbnail, renderPageThumbnail, LibraryItem, InkIndex } from "./data/library";
+import { groupIntoLines, inkSignature, findIn, numberedInkImage, Box, InkStroke, pdfLines, pdfWords, highlightedPassages, PdfRun } from "./integrations/handwriting";
 import { isFolder, childrenOf, descendantsOf, pathOf, canMoveTo, noteCount, visibleTrash, liveParent, byPlace, orderAt, rootNotebookOf } from "./data/folders";
 import { isDesktopApp } from "./integrations/net";
 import { syncLibrary } from "./data/sync";
 import { ZoteroClient, ZoteroItem, ZoteroPdf, ZoteroCollection } from "./integrations/zotero";
 import { exportAnnotatedPdf, safeFileName } from "./render/pdf-export";
-import { aiKey, aiModel, setAiKey, setAiModel, aiReady, visionModels, readMath } from "./integrations/ai";
+import { aiKey, aiModel, setAiKey, setAiModel, aiReady, visionModels, readMath, readHandwritingLines, isRouter } from "./integrations/ai";
 import JSZip from "jszip";
 
 // ---------------------------------------------------------------- icons
@@ -24,6 +25,7 @@ const ICONS: Record<string, string> = {
   spin: '<path d="M12 3a9 9 0 019 9"/>',
   sidebar: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+  split: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',
   notes: '<path d="M12 4H7a3 3 0 00-3 3v10a3 3 0 003 3h10a3 3 0 003-3v-5"/><path d="M18.5 3.5a2 2 0 013 3L12 16l-4 1 1-4z"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
   sort: '<path d="M4 6h12M4 12h8M4 18h4M17 6v12M14 15l3 3 3-3"/>',
@@ -172,7 +174,7 @@ interface Session {
 document.addEventListener("DOMContentLoaded", async () => {
   hydrateIcons();
   const canvas = $<HTMLCanvasElement>("note-canvas");
-  const renderer = new CanvasRenderer(canvas);
+  let renderer = new CanvasRenderer(canvas); // the focused half's renderer (split view has two; see panes)
   if (new URLSearchParams(location.search).has("debug")) (window as any).__starnote = { renderer }; // for performance tests only
   const drive = new GoogleDriveService();
 
@@ -246,6 +248,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("count-all").textContent = String(items.filter((i) => !i.trashed && !isFolder(i)).length);
     $("count-trash").textContent = String(visibleTrash(items).length);
     $("count-quick").textContent = String(items.filter((i) => !i.trashed && !isFolder(i) && !liveParent(items, i)).length);
+    renderGroups();
     renderCrumbs();
     const ctx = sectionsCtx();
     const view = $("lib-view");
@@ -921,11 +924,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     for (const item of picked.filter((i) => !isFolder(i))) {
       const bytes = await library.getBytes(item.id);
       if (!bytes) continue;
-      const now = Date.now();
+      const now = Date.now(), id = crypto.randomUUID();
       await library.put(
-        { ...item, id: crypto.randomUUID(), title: `${item.title} copy`, created: now, modified: now, order: undefined, driveId: undefined, syncId: undefined, syncRemote: undefined, syncLocal: undefined, syncParent: undefined },
+        { ...item, id, title: `${item.title} copy`, created: now, modified: now, order: undefined, driveId: undefined, syncId: undefined, syncRemote: undefined, syncLocal: undefined, syncParent: undefined },
         bytes
       );
+      const pdfText = await library.getPdfText(item.id).catch(() => undefined);
+      if (pdfText) await library.putPdfText(id, pdfText); // the copy of a PDF stays searchable
       n++;
     }
     await refreshLibrary();
@@ -977,6 +982,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const bytes = await exportStarNoteArchive(doc, []);
       const item: LibraryItem = { id, title: extra?.title ?? baseName(filename), kind: "pdf", created: now, modified: now, trashed: false, parentId, thumb: renderThumbnail(doc), zotero: extra?.zotero };
       await library.put(item, bytes);
+      if (pdf.pages.some((p) => p.text.length)) await library.putPdfText(id, Object.fromEntries(pdf.pages.map((p, i) => [`Page[${i}-0]`, p.text]))); // same tags as convertPdfToStarNoteDocument
       return item;
     }
     let doc: StarNoteDocument;
@@ -1024,7 +1030,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     zone.addEventListener("drop", async (e) => {
       e.preventDefault();
       zone.classList.remove("drag");
-      if (e.dataTransfer?.files?.length) await importFiles(e.dataTransfer.files);
+      const files = [...(e.dataTransfer?.files ?? [])];
+      const pics = zone.id === "canvas-container" && inEditor() ? files.filter((f) => f.type.startsWith("image/")) : [];
+      if (pics.length) { // pictures dropped on a note go onto the page where they land (in split view, on that half)
+        const at = panes.findIndex((p) => !p.el.classList.contains("hidden") && (() => { const r = p.el.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; })());
+        if (at >= 0) focusPane(at);
+        for (const [i, f] of pics.entries()) { const w = renderer.worldAt(e.clientX, e.clientY); await placePicture(f, { x: w.x + i * 40, y: w.y + i * 40 }); }
+      }
+      const rest = files.filter((f) => !pics.includes(f));
+      if (rest.length) await importFiles(rest);
     });
   }
 
@@ -1032,10 +1046,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const inEditor = () => !$("view-editor").classList.contains("hidden");
 
   function pendingStrokes(s: Session) {
-    return s === active ? renderer.getUserStrokes() : s.view?.strokes ?? [];
+    return shownIn(s)?.getUserStrokes() ?? s.view?.strokes ?? [];
   }
   const erasedSaved = (s: Session) => s.doc.removedStrokes ?? []; // erased strokes the archive still holds
-  const textChanged = (s: Session) => (s.doc.addedTextBoxes?.length ?? 0) + (s.doc.removedTextBoxes?.length ?? 0) > 0;
+  const textChanged = (s: Session) => (s.doc.addedTextBoxes?.length ?? 0) + (s.doc.removedTextBoxes?.length ?? 0) + (s.doc.addedImages?.length ?? 0) + (s.doc.removedImages?.length ?? 0) > 0; // text boxes and pictures
   const pagesChanged = (s: Session) => !!s.doc.pagesChanged || (s.doc.removedPages?.length ?? 0) > 0;
   const isDirty = (s: Session) => pendingStrokes(s).length > 0 || erasedSaved(s).length > 0 || textChanged(s) || pagesChanged(s);
 
@@ -1086,9 +1100,176 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  // ---------- split view: two halves, each its own renderer (pages, zoom, undo); the toolbar and keys act on the focused half
+  const panes: { r: CanvasRenderer | null; s: Session | null; el: HTMLElement }[] = [{ r: renderer, s: null, el: $("pane-0") }, { r: null, s: null, el: $("pane-1") }];
+  let focus = 0, split = false;
+  if ((window as any).__starnote) Object.assign((window as any).__starnote, { panes, sessions }); // tests
+  /** The renderer showing a session right now, or null when it is parked in a tab. */
+  const shownIn = (s: Session) => panes.find((p, i) => p.s === s && (i === focus || split))?.r ?? null;
+  const TOOL_FIELDS = ["activeTool", "penType", "penColor", "penWidth", "stylusOnly", "eraserReach", "shapeKind", "smoothLevel", "pressureSensitivity", "eInkMode"] as const;
+  const HOOKS = ["onChange", "onZoomChange", "onRender", "onTextRequest", "onSelectionChange", "onClipboardChange", "onPen", "onNotice"] as const;
+  function focusPane(i: number) {
+    if (i === focus || !panes[i].r) return;
+    commitInline(); void commitTextEditor(true); // text being typed belongs to the half it was typed in
+    if (findOpen()) closeFind(); // its marks belong to the other half
+    const from = panes[focus].r!, to = panes[i].r!;
+    for (const k of TOOL_FIELDS) (to as any)[k] = (from as any)[k]; // one toolbar: the same pen in both halves
+    if (from.hasSelection()) { from.clearSelection(); from.render(); }
+    focus = i; renderer = to; active = panes[i].s;
+    panes.forEach((p, j) => p.el.classList.toggle("focused", split && j === focus));
+    resetFit(); renderEditorChrome(); renderTabs(); renderToolOptions();
+  }
+  function setSplit(on: boolean) {
+    if (on === split) return;
+    if (!on) {
+      focusPane(0);
+      const p = panes[1];
+      if (p.s && p.r) p.s.view = p.r.snapshot(); // parked in its tab, as if it had been switched away from
+      p.s = null;
+    } else if (!panes[1].r) {
+      const r = new CanvasRenderer($<HTMLCanvasElement>("note-canvas-2"));
+      for (const k of HOOKS) (r as any)[k] = (renderer as any)[k];
+      panes[1].r = r;
+      panes[1].el.addEventListener("pointerdown", () => focusPane(1), { capture: true }); // focus first, then the pen acts there
+      panes[0].el.addEventListener("pointerdown", () => focusPane(0), { capture: true });
+    }
+    split = on;
+    panes[1].el.classList.toggle("hidden", !on);
+    $("pane-divider").classList.toggle("hidden", !on);
+    setSplitRatio(on ? splitRatio : null);
+    $("panes").classList.toggle("split", on);
+    $("btn-split").classList.toggle("on", on);
+    panes.forEach((p, j) => p.el.classList.toggle("focused", on && j === focus));
+    requestAnimationFrame(() => panes.forEach((p, j) => { if (p.r && (j === 0 || on)) { p.r.resize(); if (p.s) p.r.fit("width"); } })); // each half fits its new width
+    renderTabs();
+  }
+  // ---------- the divider: drag to give one half more room (20-80%), double-click for half and half; remembered
+  let splitRatio = Math.min(0.8, Math.max(0.2, Number(pref.get("sn.splitratio", "0.5")) || 0.5));
+  function setSplitRatio(r: number | null) {
+    panes[0].el.style.flex = r === null ? "" : `0 0 ${(r * 100).toFixed(2)}%`;
+    if (r !== null) splitRatio = r;
+  }
+  {
+    const div = $("pane-divider");
+    let dragging = false, frame = 0;
+    const resizeAll = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => panes.forEach((p) => p.r?.resize())); };
+    div.addEventListener("pointerdown", (e) => { dragging = true; div.classList.add("dragging"); div.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); });
+    div.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const box = $("panes").getBoundingClientRect(), stacked = getComputedStyle($("panes")).flexDirection === "column";
+      const r = stacked ? (e.clientY - box.top) / box.height : (e.clientX - box.left) / box.width;
+      setSplitRatio(Math.min(0.8, Math.max(0.2, r)));
+      resizeAll();
+    });
+    const end = () => { if (!dragging) return; dragging = false; div.classList.remove("dragging"); pref.set("sn.splitratio", String(splitRatio)); resizeAll(); };
+    div.addEventListener("pointerup", end);
+    div.addEventListener("pointercancel", end);
+    div.addEventListener("dblclick", () => { setSplitRatio(0.5); pref.set("sn.splitratio", "0.5"); resizeAll(); });
+  }
+
+  /** Closing a half: the other note fills the window (closing the left one moves the right one over); both stay open in tabs. */
+  function closeHalf(i: number) {
+    if (!split) return;
+    const other = panes[1 - i].s;
+    setSplit(false);
+    if (i === 0 && other) activate(other);
+  }
+  document.querySelectorAll<HTMLElement>(".pane-close").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); closeHalf(Number(b.dataset.pane)); }));
+  function renderPaneHeads() { panes.forEach((p) => { p.el.querySelector(".pane-title")!.textContent = p.s?.item.title ?? ""; }); }
+
+  // ---------- split groups: a pair of notes shown side by side, named and reopened later (kept on this device)
+  // ponytail: device-only (localStorage); a synced copy (Drive app data) if groups should follow the user to other devices
+  interface SplitGroup { id: string; name: string; left: string; right: string; ratio?: number }
+  const readGroups = (): SplitGroup[] => { try { return JSON.parse(pref.get("sn.groups", "[]")); } catch { return []; } };
+  const writeGroups = (g: SplitGroup[]) => { pref.set("sn.groups", JSON.stringify(g)); renderGroups(); };
+  async function saveGroup() {
+    const [l, r] = [panes[0].s, panes[1].s];
+    if (!split || !l || !r) return;
+    const name = (await askText("Name this group", `${l.item.title} + ${r.item.title}`))?.trim();
+    if (!name) return;
+    await Promise.all([l, r].filter(isDirty).map((s) => saveSession(s))); // both notes are in the library before the group points at them
+    writeGroups([...readGroups(), { id: crypto.randomUUID(), name, left: l.item.id, right: r.item.id, ratio: splitRatio }]);
+    showToast(`Saved "${name}": it is under Groups in the library and in the split button`, "success");
+  }
+  async function openGroup(g: SplitGroup) {
+    const live = (id: string) => items.find((i) => i.id === id && !i.trashed);
+    const [l, r] = [live(g.left), live(g.right)];
+    if (!l || !r) {
+      showToast(`"${g.name}": ${!l && !r ? "both notes are" : "one note is"} gone (deleted or in the Trash)`, "error");
+      if (l || r) await openItem((l ?? r)!.id);
+      return;
+    }
+    if (split) setSplit(false);
+    await openItem(l.id);
+    if (g.ratio) splitRatio = g.ratio; // the group's own sizes
+    setSplit(true); focusPane(1);
+    await openItem(r.id);
+  }
+  function groupMenu(anchor: HTMLElement, g: SplitGroup) {
+    openPopover(anchor, (root) => {
+      root.appendChild(popItem("Rename…", "pen", async () => {
+        closePopover();
+        const name = (await askText("Rename group", g.name))?.trim();
+        if (name) writeGroups(readGroups().map((x) => (x.id === g.id ? { ...x, name } : x)));
+      }));
+      root.appendChild(popItem("Delete group", "trash", () => { closePopover(); writeGroups(readGroups().filter((x) => x.id !== g.id)); showToast(`Group "${g.name}" deleted (its notes are kept)`, "info"); }));
+    });
+  }
+  function renderGroups() {
+    const box = $("side-groups"), groups = readGroups();
+    box.replaceChildren();
+    box.classList.toggle("hidden", !groups.length);
+    if (!groups.length) return;
+    box.append(el("div", "side-head", "Groups"));
+    for (const g of groups) {
+      const row = el("div", "side-group"), open = el("button", "side-open"), more = el("button", "icon-btn");
+      open.innerHTML = `<i data-icon="split"></i>`;
+      open.append(el("span", "", g.name));
+      open.title = `${items.find((i) => i.id === g.left)?.title ?? "?"} + ${items.find((i) => i.id === g.right)?.title ?? "?"}`;
+      open.addEventListener("click", () => void openGroup(g));
+      more.innerHTML = `<i data-icon="more"></i>`; more.title = "Group: rename, delete";
+      more.addEventListener("click", (e) => { e.stopPropagation(); groupMenu(more, g); });
+      row.append(open, more);
+      box.append(row);
+    }
+    hydrateIcons(box);
+  }
+
+  /** Split on: choose what the other half shows (another open note, or a recent one from the library), or a saved group.
+   * While split: save the pair as a group, or end the split. */
+  $("btn-split").addEventListener("click", (e) => {
+    const anchor = e.currentTarget as HTMLElement;
+    if (split) {
+      openPopover(anchor, (root) => {
+        root.appendChild(popItem("Save as a group…", "split", () => { closePopover(); void saveGroup(); }));
+        root.appendChild(popItem("End split", "close", () => { closePopover(); setSplit(false); }));
+      });
+      return;
+    }
+    const open = sessions.filter((t) => t !== active);
+    const recent = items.filter((i) => !isFolder(i) && !i.trashed && !sessions.some((t) => t.item.id === i.id)).sort((a, b) => b.modified - a.modified).slice(0, 8);
+    const groups = readGroups();
+    if (!open.length && !recent.length && !groups.length) { showToast("Open or create a second note first", "info"); return; }
+    const show = (go: () => void) => { closePopover(); setSplit(true); focusPane(1); go(); };
+    openPopover(anchor, (root) => {
+      if (groups.length) {
+        root.append(el("div", "pop-title", "Groups"));
+        for (const g of groups) root.appendChild(popItem(g.name, "split", () => { closePopover(); void openGroup(g); }));
+        root.append(el("div", "pop-sep"));
+      }
+      root.append(el("div", "pop-title", "Show beside it"));
+      for (const t of open) root.appendChild(popItem(t.item.title, "notes", () => show(() => activate(t))));
+      if (open.length && recent.length) root.append(el("div", "pop-sep"));
+      for (const i of recent) root.appendChild(popItem(i.title, i.kind === "pdf" ? "pages" : "notes", () => show(() => void openItem(i.id))));
+    });
+  });
+
   function activate(s: Session) {
+    const there = split ? panes.findIndex((p, i) => i !== focus && p.s === s) : -1;
+    if (there >= 0) { focusPane(there); return; }
     if (active && active !== s) park();
     active = s;
+    panes[focus].s = s;
     showView("editor");
     if (s.view) renderer.restore(s.view);
     else {
@@ -1096,12 +1277,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderer.fit("width");
     }
     resetFit();
+    if (findOpen()) closeFind(); // its marks belong to the note it searched
     s.view = null;
     renderEditorChrome();
     renderTabs();
   }
 
   async function leaveToLibrary() {
+    if (split) setSplit(false); // the library is one view; the other half's note stays open in its tab
     if (active) {
       const s = active;
       park();
@@ -1118,6 +1301,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function closeSession(s: Session | undefined, silent = false) {
     if (!s) return;
+    if (split && panes.some((p) => p.s === s)) setSplit(false); // closing a note on screen ends the split first
     if (s === active) park();
     if (!silent && !(s.isNew && !isDirty(s))) await saveSession(s);
     const i = sessions.indexOf(s);
@@ -1142,9 +1326,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       setSaveState("saving");
       try {
         const bytes = await exportStarNoteArchive(s.doc, pending);
-        if (s === active) {
-          renderer.markSaved(pending, erased);
-          if (s.view) s.view = renderer.snapshot(); // parked just before this save (leaving the editor): markSaved made new lists, so the old snapshot would bring the saved strokes back as unsaved ones
+        const r = shownIn(s);
+        if (r) {
+          r.markSaved(pending, erased);
+          if (s.view) s.view = r.snapshot(); // parked just before this save (leaving the editor): markSaved made new lists, so the old snapshot would bring the saved strokes back as unsaved ones
         } else if (s.view) s.view = { ...s.view, strokes: s.view.strokes.filter((x) => !pending.includes(x)), undoStack: [], redoStack: [] };
         const fields = { modified: Date.now(), thumb: renderThumbnail(s.doc) };
         if (s.isNew || !(await library.update(s.item.id, fields, bytes))) {
@@ -1190,10 +1375,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const seenTabs = new Set<string>(); // tabs already shown: only a newly opened one animates
   function renderTabs() {
+    renderPaneHeads(); // the split halves name their notes (tabs change whenever a note is opened, focused or renamed)
     const wrap = $("tabs");
     wrap.innerHTML = "";
     for (const s of sessions) {
-      const t = el("div", `tab${s === active ? " active" : ""}${seenTabs.has(s.item.id) ? "" : " enter"}`);
+      const t = el("div", `tab${s === active ? " active" : split && panes.some((p) => p.s === s) ? " shown" : ""}${seenTabs.has(s.item.id) ? "" : " enter"}`);
       seenTabs.add(s.item.id);
       if (isDirty(s)) t.appendChild(el("i", "tab-dirty"));
       t.appendChild(el("span", "", s.item.title));
@@ -1229,6 +1415,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       void saveSession(active, true);
     }, AUTOSAVE_MS);
   }
+  // Palm rejection: on by default on devices with a pen (from the first pen stroke), so a finger only pans there; a device
+  // that never saw a pen keeps drawing with touch. Choosing it in Touch & pen wins and is kept.
+  renderer.stylusOnly = pref.get("sn.stylus", "") ? pref.get("sn.stylus", "") === "1" : pref.get("sn.penseen", "") === "1";
+  renderer.onPen = () => {
+    if (pref.get("sn.penseen", "") === "1") return;
+    pref.set("sn.penseen", "1");
+    if (!pref.get("sn.stylus", "")) renderer.stylusOnly = true;
+  };
   renderer.onChange = () => {
     if (!active) return;
     renderEditorChrome();
@@ -1484,17 +1678,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     const changed = renderer.activeTool !== tool;
     if (tool !== "text") { void commitTextEditor(true); commitInline(); inl.pendingMath = false; }
     renderer.activeTool = tool;
-    if (tool !== "lasso" && renderer.hasSelection()) { renderer.clearSelection(); renderer.render(); }
+    if (tool !== "lasso" && (renderer.hasSelection() || renderer.hasPicture())) { renderer.clearSelection(); renderer.render(); }
     for (const t of TOOLS) $(`tool-${t}`).classList.toggle("active", t === tool);
     $("canvas-container").style.cursor = tool === "pan" ? "grab" : tool === "eraser" ? "cell" : "crosshair";
-    if (changed) optionsOpen = true; // choosing a tool shows its options
+    if (changed) optionsOpen = false; // choosing a tool only selects it: its options open on a second tap, so nothing covers the page unasked (Linux QA 1.0.1 F-A: a stroke started on the panel was lost)
     renderToolOptions();
   }
   let lastEraserTap = 0;
   for (const t of TOOLS) {
     $(`tool-${t}`).addEventListener("click", () => {
-      if (t !== renderer.activeTool) { lastEraserTap = t === "eraser" ? Date.now() : 0; setTool(t); return; }
-      if (t === "eraser" && Date.now() - lastEraserTap < 450) { lastEraserTap = 0; clearCurrentPage(); return; } // double tap
+      if (t !== renderer.activeTool) { lastEraserTap = 0; setTool(t); return; } // the tap that picks the eraser is not half of a double tap (a second tap opens its options; a double tap on the eraser in use clears the page)
+      if (t === "eraser" && Date.now() - lastEraserTap < 450) { lastEraserTap = 0; optionsOpen = false; renderToolOptions(); clearCurrentPage(); return; } // double tap (its first tap opened the options: closed again, Linux QA 1.0.2)
       lastEraserTap = t === "eraser" ? Date.now() : 0;
       optionsOpen = !optionsOpen; // tapping the tool in use shows or hides its options
       renderToolOptions();
@@ -1686,6 +1880,178 @@ document.addEventListener("DOMContentLoaded", async () => {
     grid.appendChild(add);
     hydrateIcons(grid);
   }
+
+  // ---------- Find in note: typed and PDF text always; handwriting once the AI has read it (only when asked: "Read handwriting")
+  const find = { hits: [] as { page: string; box: Box }[], i: -1, index: null as InkIndex | null, noteId: "", run: 0, pdf: null as Record<string, PdfRun[]> | null, pdfLines: {} as Record<string, { text: string; box: Box }[]>, pdfNote: "", pdfLoad: Promise.resolve() };
+  /** A PDF page's text, placed on the page's picture as it is laid out now (pages can move). */
+  const toWorld = (page: Box, b: Box): Box => { const w = page.r - page.l, hh = page.b - page.t; return { l: page.l + b.l * w, r: page.l + b.r * w, t: page.t + b.t * hh, b: page.t + b.b * hh }; };
+  function loadPdfText(): Promise<void> {
+    if (!active || find.pdfNote === active.item.id) return find.pdfLoad; // one load per note, shared by everyone waiting
+    const item = active.item;
+    find.pdfNote = item.id;
+    return (find.pdfLoad = (async () => {
+      find.pdf = item.kind === "pdf" ? (await library.getPdfText(item.id).catch(() => undefined)) ?? null : null;
+      find.pdfLines = Object.fromEntries(Object.entries(find.pdf ?? {}).map(([tag, runs]) => [tag, pdfLines(runs)]));
+    })());
+  }
+  /** What the status line adds for a PDF: its text is searched, or why it can't be. */
+  const pdfStatus = () => active?.item.kind !== "pdf" ? "" : find.pdf ? " PDF text is searched too." : " This PDF's text was not kept (imported before text search, or a scan): import the PDF again to search it.";
+  const findInput = $<HTMLInputElement>("find-input"), findStatus = $("find-status");
+  const findOpen = () => !$("find-bar").classList.contains("hidden") && !$("find-bar").classList.contains("leaving");
+  function openFind() {
+    setShown($("find-bar"), true);
+    $("btn-find").classList.add("on");
+    findInput.focus(); findInput.select();
+    void loadPdfText().then(() => { runFind(false); renderFindRead(); });
+    void loadInk();
+  }
+  function closeFind() {
+    find.run++; // stops a reading in progress
+    setShown($("find-bar"), false);
+    $("btn-find").classList.remove("on");
+    renderer.setFindMarks([], -1);
+  }
+  /** The handwriting already read for this note (kept by the app), and which pages still need reading (new or changed ink). */
+  async function loadInk(): Promise<{ tag: string; strokes: InkStroke[] }[]> {
+    if (!active) return [];
+    const id = active.item.id;
+    let idx = find.noteId === id ? find.index : null;
+    idx ??= (await library.getInk(id).catch(() => undefined)) ?? { lang: "ai", pages: {} };
+    if (active?.item.id !== id) return [];
+    find.index = idx; find.noteId = id;
+    const pages = renderer.inkByPage();
+    for (const tag of Object.keys(idx.pages)) if (!pages.some((p) => p.tag === tag)) delete idx.pages[tag]; // a page without ink now
+    const todo = pages.filter((p) => idx!.pages[p.tag]?.sig !== inkSignature(p.strokes));
+    const read = Object.values(idx.pages).reduce((k, pg) => k + new Set(pg.lines.map((l) => `${l.box.t},${l.box.l}`)).size, 0);
+    $("find-ai").classList.toggle("hidden", !todo.length);
+    $("find-ai-model").classList.add("hidden");
+    $("find-ai").textContent = `Read handwriting (AI)${todo.length > 1 ? `: ${todo.length} pages` : ""}`;
+    await loadPdfText();
+    findStatus.textContent = (!pages.length ? "No handwriting on these pages."
+      : todo.length ? `${todo.length} page${todo.length === 1 ? "" : "s"} of handwriting not read yet${read ? ` (${read} lines read)` : ""}: typed text is searched; the AI reads handwriting when you ask.`
+      : `Handwriting read by the AI: ${read} line${read === 1 ? "" : "s"}.`) + pdfStatus();
+    renderFindRead();
+    return todo;
+  }
+  /** Reads the pages not read yet with the AI (a picture of each page's ink, lines numbered), only when the user asks. */
+  async function readInkWithAi() {
+    if (!active) return;
+    const todo = await loadInk(), id = active.item.id, idx = find.index!, run = ++find.run;
+    if (!todo.length) return;
+    if (!aiReady() && !(await openAiSettings())) return;
+    if (!confirm(`Read handwriting sends a picture of the handwriting on ${todo.length} page${todo.length === 1 ? "" : "s"} to OpenRouter and the model you chose, using your key (one request per page).\n\nSend it?`)) return;
+    let n = 0;
+    for (const p of todo) {
+      if (run !== find.run || active?.item.id !== id) return;
+      findStatus.textContent = `The AI is reading handwriting… page ${++n} of ${todo.length}`;
+      const lines = groupIntoLines(p.strokes), png = numberedInkImage(lines);
+      if (!png) continue;
+      try {
+        const texts = await readHandwritingLines(png, lines.length);
+        idx.pages[p.tag] = { sig: inkSignature(p.strokes), lines: lines.map((l, i) => ({ text: texts[i], lang: "ai", box: l.box })).filter((l) => l.text) };
+        await library.putInk(id, idx).catch(() => undefined); // kept by the app (never in the .note): a page is read once
+      } catch (e: any) {
+        const left = todo.length - n + 1; // this page and the ones after it; the pages read so far are kept
+        const done = n - 1;
+        findStatus.textContent = `Could not read handwriting: ${e?.message ?? e} ${left} page${left === 1 ? "" : "s"} not read yet${done ? `; the ${done} read ${done === 1 ? "is" : "are"} kept` : ""}.`;
+        $("find-ai").textContent = "Retry"; $("find-ai-model").classList.remove("hidden"); // try again, or with another model
+        return;
+      }
+      if (run === find.run) runFind(false);
+    }
+    if (run === find.run) await loadInk();
+  }
+  $("find-ai").addEventListener("click", () => void readInkWithAi());
+  $("find-ai-model").addEventListener("click", async () => { if (await openAiSettings()) void readInkWithAi(); });
+  /** The passages of each PDF page that the highlighter covers (worked out from the strokes and the page's words). */
+  function pdfHighlights(): Record<string, { text: string; box: Box }[]> {
+    if (!find.pdf || find.pdfNote !== active?.item.id) return {};
+    const pages = renderer.pageBoxes(), out: Record<string, { text: string; box: Box }[]> = {};
+    for (const { tag, strokes } of renderer.inkByPage(true)) {
+      const runs = find.pdf[tag], page = pages[tag];
+      if (!runs?.length || !page) continue;
+      const found = highlightedPassages(pdfWords(runs).map((w) => ({ text: w.text, box: toWorld(page, w.box) })), strokes);
+      if (found.length) out[tag] = found;
+    }
+    return out;
+  }
+  /** "What was read": the recognizers' text per line and the highlighted PDF passages, page by page, so a miss can be told
+   * from a misreading (and the passages are what an assistant would be given). */
+  function renderFindRead() {
+    const list = $("find-read-list"), order = renderer.pageOrder(), hl = pdfHighlights();
+    const ink = find.noteId === active?.item.id ? find.index?.pages ?? {} : {};
+    const tags = [...new Set([...Object.keys(ink).filter((t) => ink[t].lines.length), ...Object.keys(hl)])].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    list.replaceChildren();
+    $("find-read").classList.toggle("hidden", !tags.length);
+    for (const tag of tags) {
+      list.append(el("div", "fr-page", `Page ${order.indexOf(tag) + 1}`));
+      const rows = [...(ink[tag]?.lines ?? []).map((l) => ({ ...l, lang: l.lang ?? "" })), ...(hl[tag] ?? []).map((p) => ({ ...p, lang: "hl" }))];
+      for (const l of rows.sort((a, b) => a.box.t - b.box.t || a.box.l - b.box.l)) {
+        const row = el("div", "fr-line");
+        row.append(el("span", "fr-lang", l.lang), document.createTextNode(l.text));
+        list.append(row);
+      }
+    }
+  }
+  /** Finds the query in typed text and in the handwriting read so far; `jump` moves to the first hit. */
+  function runFind(jump: boolean) {
+    const q = findInput.value;
+    const hits: { page: string; box: Box }[] = [];
+    if (q.trim()) {
+      for (const t of renderer.textByPage()) if (findIn(t.text, q).length) hits.push({ page: t.tag, box: t.box });
+      if (find.pdf && find.pdfNote === active?.item.id) { // an imported PDF's own text, mark narrowed to the match
+        const pages = renderer.pageBoxes();
+        for (const [tag, lines] of Object.entries(find.pdfLines)) {
+          if (!pages[tag]) continue;
+          for (const line of lines) for (const m of findIn(line.text, q)) {
+            const b = toWorld(pages[tag], line.box), w = b.r - b.l;
+            hits.push({ page: tag, box: { ...b, l: b.l + w * m.from, r: b.l + w * m.to } });
+          }
+        }
+      }
+      for (const [tag, pg] of Object.entries(find.noteId === active?.item.id ? find.index?.pages ?? {} : {})) {
+        for (const line of pg.lines) for (const m of findIn(line.text, q)) {
+          const w = line.box.r - line.box.l; // narrow the mark to the part of the line that matched
+          const box = { l: line.box.l + w * m.from, r: line.box.l + w * m.to, t: line.box.t, b: line.box.b };
+          // the same word read in both languages is one hit: skip a mark that mostly overlaps one already there
+          const dup = hits.some((h) => h.page === tag && h.box.t === box.t && Math.min(h.box.r, box.r) - Math.max(h.box.l, box.l) > 0.5 * Math.min(h.box.r - h.box.l, box.r - box.l));
+          if (!dup) hits.push({ page: tag, box });
+        }
+      }
+    }
+    const order = renderer.pageOrder();
+    hits.sort((a, b) => order.indexOf(a.page) - order.indexOf(b.page) || a.box.t - b.box.t || a.box.l - b.box.l);
+    find.hits = hits;
+    if (find.i >= hits.length || jump) find.i = hits.length ? 0 : -1;
+    if (find.i < 0 && hits.length) find.i = 0;
+    $("find-count").textContent = !q.trim() ? "" : hits.length ? `${find.i + 1} of ${hits.length}` : "No matches";
+    renderer.setFindMarks(hits.map((h) => h.box), find.i);
+    if (jump && hits.length) renderer.showBox(hits[find.i].box);
+  }
+  function stepFind(d: number) {
+    if (!find.hits.length) return;
+    find.i = (find.i + d + find.hits.length) % find.hits.length;
+    $("find-count").textContent = `${find.i + 1} of ${find.hits.length}`;
+    renderer.setFindMarks(find.hits.map((h) => h.box), find.i);
+    renderer.showBox(find.hits[find.i].box);
+  }
+  $("btn-find").addEventListener("click", () => (findOpen() ? closeFind() : openFind()));
+  $("find-close").addEventListener("click", closeFind);
+  $("find-next").addEventListener("click", () => stepFind(1));
+  $("find-prev").addEventListener("click", () => stepFind(-1));
+  findInput.addEventListener("input", () => runFind(true));
+  findInput.addEventListener("keydown", (e) => {
+    e.stopPropagation(); // typing here is not a shortcut
+    if (e.key === "Enter") { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); }
+    else if (e.key === "Escape") { e.preventDefault(); closeFind(); }
+  });
+  // ink written while Find is open: the status says a moment later that it is not read yet
+  let findIdle = 0;
+  const onChangeBeforeFind = renderer.onChange;
+  renderer.onChange = () => {
+    onChangeBeforeFind?.();
+    if (findOpen()) { clearTimeout(findIdle); findIdle = window.setTimeout(() => { if (findOpen()) void loadInk(); }, 1500); } // shows what is not read yet; reading costs AI use, so only on request
+  };
 
   // ---------- page panel (right): the page's format, live, and the page actions; toggled from the top bar
   const panelOn = () => pref.get("sn.pagepanel", "0") === "1";
@@ -1954,10 +2320,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         sel.innerHTML = "";
         for (const m of list) sel.appendChild(new Option(`${m.free ? "Free · " : ""}${m.name}`, m.id, false, m.id === current));
         if (current && !list.some((m) => m.id === current)) sel.prepend(new Option(current, current, true, true));
-        status.textContent = `${list.filter((m) => m.free).length} free and ${list.filter((m) => !m.free).length} paid models read images. Free ones are listed first.`;
+        status.textContent = `${list.filter((m) => m.free).length} free and ${list.filter((m) => !m.free).length} paid models read images. Free ones are listed first.` + (current && isRouter(current) ? ` Your model "${current}" is a router: it can pass a picture to a model that cannot see, so pick one from this list.` : "");
       }).catch((e) => { status.textContent = `Could not load the model list (${e.message}); you can type a model id.`; });
       const done = (ok: boolean) => { setShown(modal, false); resolve(ok); };
-      $("ai-save").onclick = () => { setAiKey(key.value); setAiModel(custom.value.trim() || sel.value); done(aiReady()); };
+      $("ai-save").onclick = () => {
+        setAiKey(key.value); setAiModel(custom.value.trim() || sel.value);
+        if (isRouter(aiModel())) showToast(`"${aiModel()}" is a router: it may pass pictures to a model that cannot see them. A model from the list reads images.`, "info");
+        done(aiReady());
+      };
       $("ai-cancel").onclick = $("ai-close").onclick = () => done(false);
       $("ai-forget").onclick = () => { setAiKey(""); key.value = ""; showToast("The OpenRouter key was removed from this device", "info"); };
       setShown(modal, true);
@@ -1987,7 +2357,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const syncSelectionButtons = () => {
     const sel = renderer.hasSelection();
     $("sel-copy").classList.toggle("hidden", !sel);
-    $("sel-delete").classList.toggle("hidden", !sel);
+    $("sel-delete").classList.toggle("hidden", !sel && !renderer.hasPicture());
     $("sel-latex").classList.toggle("hidden", !sel);
     $("sel-paste").classList.toggle("hidden", !renderer.hasClipboard());
   };
@@ -2004,14 +2374,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderer.penType = penFor(penById(pref.get("sn.pen", "pen")).id, penSetting[penById(pref.get("sn.pen", "pen")).id]);
   applyPenColor();
   syncPenButton();
-  setTool("pen");
+  setTool("pan"); // the app opens with the Hand tool: looking around a note never leaves a stray mark; pick a pen to write
 
   $("btn-pen-settings").dataset.pop = "1";
   $("btn-pen-settings").addEventListener("click", (e) => {
     const anchor = e.currentTarget as HTMLElement;
     const build = (root: HTMLElement) => {
       root.append(el("div", "pop-title", "Touch & pen"));
-      root.appendChild(popItem("Stylus only (palm rejection)", "pen", () => { renderer.stylusOnly = !renderer.stylusOnly; openPopover(anchor, build); }, { checked: renderer.stylusOnly }));
+      root.appendChild(popItem("Stylus only (palm rejection)", "pen", () => { renderer.stylusOnly = !renderer.stylusOnly; pref.set("sn.stylus", renderer.stylusOnly ? "1" : "0"); openPopover(anchor, build); }, { checked: renderer.stylusOnly }));
       root.appendChild(popItem("E-Ink mode (high contrast)", "image", () => {
         renderer.eInkMode = !renderer.eInkMode;
         document.body.classList.toggle("eink-mode", renderer.eInkMode);
@@ -2071,20 +2441,39 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? renderer.redo() : renderer.undo(); }
     else if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); renderer.redo(); }
     else if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); if (active) saveSession(active); }
+    else if (mod && e.key.toLowerCase() === "f") { e.preventDefault(); openFind(); }
     else if (mod && e.key.toLowerCase() === "c") { if (renderer.copySelection()) { e.preventDefault(); showToast("Copied. Open any note and paste.", "success"); } }
     else if (mod && e.key.toLowerCase() === "x") { if (renderer.cutSelection()) e.preventDefault(); }
     else if (mod && e.key.toLowerCase() === "v") { if (renderer.hasClipboard()) { e.preventDefault(); renderer.pasteClipboard(); } }
-    else if ((e.key === "Delete" || e.key === "Backspace") && renderer.hasSelection()) { e.preventDefault(); renderer.deleteSelection(); }
+    else if ((e.key === "Delete" || e.key === "Backspace") && (renderer.hasSelection() || renderer.hasPicture())) { e.preventDefault(); renderer.deleteSelection(); }
     else if (e.key === "Escape" && renderer.hasSelection()) { renderer.clearSelection(); renderer.render(); }
   });
 
-  window.addEventListener("paste", (e) => { // pictures can't be placed in a note yet: say so instead of doing nothing
+  window.addEventListener("paste", (e) => { // a picture on the clipboard goes onto the page, in the middle of the view
     if (!inEditor() || (e.target as HTMLElement | null)?.closest?.("input,textarea")) return;
-    if ([...(e.clipboardData?.items ?? [])].some((i) => i.type.startsWith("image/"))) {
-      e.preventDefault();
-      showToast("Pasting pictures isn't supported yet. You can paste drawings copied with the lasso.", "info");
-    }
+    const file = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
+    if (file) { e.preventDefault(); void placePicture(file); }
   });
+  /**
+   * A picture file onto the page (selected, so it can be moved and resized at once). A large photo is scaled to 2400 px on its
+   * long side and kept as JPEG, so a phone photo does not make the note many megabytes; small pictures stay as they are.
+   */
+  async function placePicture(file: Blob, at?: { x: number; y: number }) {
+    if (!active) return;
+    let bytes = new Uint8Array(await file.arrayBuffer());
+    let ext = ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" } as Record<string, string>)[file.type] ?? "png";
+    try {
+      const bmp = await createImageBitmap(file), MAX = 2400;
+      if (Math.max(bmp.width, bmp.height) > MAX) {
+        const k = MAX / Math.max(bmp.width, bmp.height), c = document.createElement("canvas");
+        c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+        c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+        const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/jpeg", 0.88));
+        if (blob) { bytes = new Uint8Array(await blob.arrayBuffer()); ext = "jpg"; }
+      }
+    } catch { /* not decodable: insertImage says so */ }
+    if (await renderer.insertImage(bytes, ext, at)) setTool("lasso"); // ready to move or resize it
+  }
 
   // unsaved work: flush when the window is hidden; a browser tab also warns when it is closed
   document.addEventListener("visibilitychange", () => {
@@ -2408,7 +2797,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           // Busy = on screen, unsaved, or mid-save. A clean tab that is not showing is released and reloads fresh next time.
           isBusy: (id) => {
             const x = sessions.find((t) => t.item.id === id);
-            return !!x && ((x === active && inEditor()) || isDirty(x) || x.inFlight > 0);
+            return !!x && ((!!shownIn(x) && inEditor()) || isDirty(x) || x.inFlight > 0);
           },
           release: (id) => {
             const i = sessions.findIndex((t) => t.item.id === id);
@@ -2749,6 +3138,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (open("gdrive-modal")) { setShown($("gdrive-modal"), false); return true; }
     if (inEditor()) {
       if (te.open) { closeTextEditor(); return true; }  // the Math panel: like Cancel
+      if (findOpen()) { closeFind(); return true; }
       if (inl.on) { commitInline(); return true; }      // typing on the page: keep what was typed
       if (optionsOpen) { optionsOpen = false; renderToolOptions(); return true; }
       void leaveToLibrary();

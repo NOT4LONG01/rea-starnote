@@ -6,7 +6,7 @@ import {
   RawStrokePoint,
   BrushParameters
 } from "../model/stroke-interpolator";
-import { StarNoteDocument, ParsedTile, ParsedStroke, ParsedTextBox } from "../model/note-loader";
+import { StarNoteDocument, ParsedTile, ParsedStroke, ParsedTextBox, ParsedImage, decodeImage } from "../model/note-loader";
 import { isMathText, latexOf } from "../model/math";
 import { PenType, penById, penScaleOf } from "../model/pens";
 import { ShapeKind, shapePoints } from "../model/shapes";
@@ -18,6 +18,7 @@ type Action =
   | { kind: "erase"; strokes: ParsedStroke[] }
   | { kind: "replace"; from: ParsedStroke[]; to: ParsedStroke[] } // move / recolor / resize a selection
   | { kind: "text"; from: ParsedTextBox[]; to: ParsedTextBox[] } // create / edit / delete a text box
+  | { kind: "image"; from: ParsedImage[]; to: ParsedImage[] } // insert / move / resize / delete a picture
   | { kind: "group"; actions: Action[] }; // several changes undone and redone as one (ink converted to a formula)
 
 /** Everything needed to park an open note (editor tab) and come back to it. */
@@ -69,6 +70,7 @@ export class CanvasRenderer {
 
   // Multiplatform / Android / Tablet features
   public stylusOnly: boolean = false; // Palm-rejection: ignore touch events when drawing
+  public onPen: (() => void) | null = null; // a pen touched the canvas (main turns palm rejection on the first time)
   public eInkMode: boolean = false;   // High-contrast rendering for Onyx Boox / E-ink screens
 
   // Zoom change callback for UI synchronization
@@ -197,7 +199,7 @@ export class CanvasRenderer {
       a.kind === "group" ? a.actions.every(keep)
       : a.kind === "draw" ? !gone.has(a.stroke)
       : a.kind === "erase" ? !a.strokes.some((s) => gone.has(s))
-      : a.kind === "text" ? false // saved boxes were written: their history ends here, like strokes'
+      : a.kind === "text" || a.kind === "image" ? false // saved boxes were written: their history ends here, like strokes'
       : ![...a.from, ...a.to].some((s) => gone.has(s));
     this.undoStack = this.undoStack.filter(keep);
     this.redoStack = this.redoStack.filter(keep);
@@ -248,6 +250,13 @@ export class CanvasRenderer {
       const [gone, back] = reverse ? [a.to, a.from] : [a.from, a.to];
       gone.forEach((b) => this.dropTextBox(b));
       back.forEach((b) => this.putTextBox(b));
+      return;
+    }
+    if (a.kind === "image") {
+      const [gone, back] = reverse ? [a.to, a.from] : [a.from, a.to];
+      gone.forEach((i) => this.dropImage(i));
+      back.forEach((i) => this.putImage(i));
+      if (this.selImage && gone.includes(this.selImage)) this.selImage = back[0] ?? null;
       return;
     }
     const strokes = a.kind === "draw" ? [a.stroke] : a.strokes;
@@ -362,14 +371,18 @@ export class CanvasRenderer {
 
       const isPen = e.pointerType === "pen";
       const isTouch = e.pointerType === "touch";
+      if (isPen) this.onPen?.();
 
-      // Palm Rejection: If user is already drawing with pen, ignore any resting palm touches!
-      if (this.isDrawing && this.drawingPointerId !== null && isTouch) {
+      // Palm rejection: while a gesture is under way (drawing, erasing, lasso, moving a selection, a shape, a picture), a
+      // touch that is not that gesture's own pointer is a resting palm: ignored, so it can neither pan nor start a pinch
+      // (Windows owner, 1.0.1: erasing was interrupted, since only drawing was guarded)
+      if (isTouch && this.isBusy() && e.pointerId !== this.drawingPointerId) {
+        this.activePointers.delete(e.pointerId);
         return;
       }
 
-      // Check multi-touch pinch zoom detection (only if both pointers are touch and not pen drawing)
-      if (this.activePointers.size === 2 && !this.isDrawing) {
+      // Check multi-touch pinch zoom detection (only if both pointers are touch and no gesture is under way)
+      if (this.activePointers.size === 2 && !this.isBusy()) {
         const pts = Array.from(this.activePointers.values());
         if (pts.every(p => p.pointerType === "touch")) {
           this.isPinching = true;
@@ -384,6 +397,19 @@ export class CanvasRenderer {
 
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
+
+      // A selection moves from wherever it was made (the side button leaves the pen tool active): a drag that starts inside
+      // its box moves it, with the pen, a mouse or a finger, whatever tool is chosen; the eraser end still erases
+      // (Windows owner, 1.0.1: lassoed ink could not be moved)
+      if (this.selBox && !(e.buttons & 32) && e.button !== 5) {
+        const w = this.toWorld(e);
+        if (this.insideSelBox(w.x, w.y)) { this.beginMove(e, w); return; }
+      }
+      if (this.selImage && !(e.buttons & 32) && e.button !== 5) { // a selected picture too: drag it, or its corner handle
+        const w = this.toWorld(e);
+        if (this.onImageHandle(w)) { this.beginImageDrag(e, w, "resize"); return; }
+        if (this.imageAt(w.x, w.y) === this.selImage) { this.beginImageDrag(e, w, "move"); return; }
+      }
 
       // Stylus-only palm rejection mode:
       if (this.stylusOnly && isTouch) {
@@ -415,6 +441,10 @@ export class CanvasRenderer {
 
       if (tool === "lasso") {
         const w = this.toWorld(e);
+        if (this.selImage && this.onImageHandle(w)) { this.beginImageDrag(e, w, "resize"); return; } // the corner handle resizes
+        const img = this.selBox && this.insideSelBox(w.x, w.y) ? null : this.imageAt(w.x, w.y);
+        if (img) { if (this.selected.size) this.clearSelection(); this.selectImage(img); this.beginImageDrag(e, w, "move"); return; }
+        if (this.selImage) this.selectImage(null);
         if (this.selBox && this.insideSelBox(w.x, w.y)) this.beginMove(e, w); else this.beginLasso(e, w);
         return;
       }
@@ -436,6 +466,8 @@ export class CanvasRenderer {
           pointerType: e.pointerType,
         });
       }
+
+      if (this.imgDrag && e.pointerId === this.imgDrag.id) { this.dragImage(this.toWorld(e)); return; }
 
       const dpr = window.devicePixelRatio || 1;
       const rect = this.canvas.getBoundingClientRect();
@@ -566,6 +598,7 @@ export class CanvasRenderer {
       if (this.shapeFrom && e.pointerId === this.drawingPointerId) this.endShape();
       if (this.isLassoing && e.pointerId === this.drawingPointerId) this.endLasso();
       if (this.isMovingSel && e.pointerId === this.drawingPointerId) this.endMove();
+      if (this.imgDrag && e.pointerId === this.imgDrag.id) this.endImageDrag(e.type === "pointerup");
 
       // Only finish drawing if the drawing pointer itself lifted!
       // If a resting palm lifted while pen is still down, do NOT end the pen stroke!
@@ -581,7 +614,7 @@ export class CanvasRenderer {
   private toolFor(e: PointerEvent): "pan" | "pen" | "eraser" | "lasso" | "shape" | "text" {
     if (e.pointerType === "pen") {
       if ((e.buttons & 32) || e.button === 5) return "eraser";
-      if (this.activeTool === "pen" && ((e.buttons & 2) || e.button === 2)) return "lasso";
+      if ((e.buttons & 2) || e.button === 2) return "lasso"; // the side button lassos whatever tool is chosen (the editor starts with the Hand)
     }
     return this.activeTool;
   }
@@ -1034,6 +1067,47 @@ export class CanvasRenderer {
 
   public isStack(): boolean { return this.doc?.layout === "stack"; }
   public isInfinite(): boolean { return !!this.doc?.infinite; }
+
+  /** The ink of each page in world coordinates (saved strokes and the ones drawn since), for handwriting search; with
+   * `highlighter`, only the highlighter's strokes (see-through) instead of only the writing. */
+  public inkByPage(highlighter = false): { tag: string; strokes: { points: { x: number; y: number }[]; width: number }[] }[] {
+    if (!this.doc) return [];
+    const want = (s: ParsedStroke) => ((s.alpha ?? 1) < 1) === highlighter;
+    const pages = [...this.doc.tiles.values()].map((t) => ({ tile: t, strokes: t.strokes.filter(want).map((s) => ({ width: s.width, points: s.points.map((p) => ({ x: p.x + t.rect.left, y: p.y + t.rect.top })) })) }));
+    for (const st of this.userDrawnStrokes) {
+      if (!want(st)) continue;
+      const p0 = st.points[Math.floor(st.points.length / 2)];
+      const home = p0 && pages.find(({ tile }) => { const r = tile.pageRect ?? tile.rect; return p0.x >= r.left && p0.x < r.right && p0.y >= r.top && p0.y < r.bottom; });
+      if (home) home.strokes.push({ width: st.width, points: st.points.map((p) => ({ x: p.x, y: p.y })) });
+    }
+    return pages.filter((p) => p.strokes.length).map((p) => ({ tag: p.tile.pageTag, strokes: p.strokes }));
+  }
+  /** Where each page's paper (a PDF page's picture) is, in world coordinates: PDF text is placed by it. */
+  public pageBoxes(): Record<string, { l: number; t: number; r: number; b: number }> {
+    return Object.fromEntries([...(this.doc?.tiles.values() ?? [])].map((t) => { const r = t.pageRect ?? t.rect; return [t.pageTag, { l: r.left, t: r.top, r: r.right, b: r.bottom }]; }));
+  }
+  /** Typed text boxes in world coordinates, for "Find in note". */
+  public textByPage(): { tag: string; text: string; box: { l: number; t: number; r: number; b: number } }[] {
+    if (!this.doc) return [];
+    return [...this.doc.tiles.values()].flatMap((t) => (t.textBoxes ?? []).map((b) => ({ tag: t.pageTag, text: b.text, box: { l: t.rect.left + b.rect.left, t: t.rect.top + b.rect.top, r: t.rect.left + b.rect.right, b: t.rect.top + b.rect.bottom } })));
+  }
+  /** The reading order of pages (for sorting search hits). */
+  public pageOrder(): string[] { return this.doc ? [...this.doc.tiles.values()].sort((a, b) => (a.pageRect ?? a.rect).top - (b.pageRect ?? b.rect).top || (a.pageRect ?? a.rect).left - (b.pageRect ?? b.rect).left).map((t) => t.pageTag) : []; }
+
+  private findMarks: { l: number; t: number; r: number; b: number }[] = [];
+  private findCurrent = -1;
+  /** Marks the places "Find in note" found (current one stronger) on the overlay; an empty list clears them. */
+  public setFindMarks(marks: { l: number; t: number; r: number; b: number }[], current: number) {
+    this.findMarks = marks; this.findCurrent = current;
+    this.overlayDirty = true;
+    this.drawOverlay();
+  }
+  /** Brings a world rectangle into view (centred, keeping the zoom unless it is far too close to read the page). */
+  public showBox(box: { l: number; t: number; r: number; b: number }) {
+    const cx = (box.l + box.r) / 2, cy = (box.t + box.b) / 2;
+    const panX = this.canvas.width / 2 - cx * this.zoom, panY = this.canvas.height / 3 - cy * this.zoom;
+    if (!this.glideTo(panX, panY)) { this.panX = panX; this.panY = panY; this.render(); }
+  }
   public canvasStyle(): { template: PageTemplate; spacing: number } | null { return this.doc?.infinite ? { ...this.doc.infinite } : null; }
 
   /** Infinite canvas: one page style for the whole sheet (and every tile in the file). */
@@ -1190,9 +1264,10 @@ export class CanvasRenderer {
   public hasSelection(): boolean { return this.selected.size > 0; }
 
   /** True while a pen/finger gesture is in progress (drawing, erasing, a lasso, a move, a shape being dragged). */
-  public isBusy(): boolean { return this.isDrawing || this.isErasing || this.isLassoing || this.isMovingSel || !!this.shapeFrom; }
+  public isBusy(): boolean { return this.isDrawing || this.isErasing || this.isLassoing || this.isMovingSel || !!this.shapeFrom || !!this.imgDrag; }
 
   public clearSelection() {
+    if (this.selImage) this.selectImage(null);
     if (this.selected.size === 0 && !this.isLassoing && !this.isMovingSel) return;
     this.selected.clear();
     this.selBox = null;
@@ -1372,7 +1447,140 @@ export class CanvasRenderer {
     return hit.length;
   }
 
+  // ---------- pictures: tap one with the select tool to select it; drag to move, the corner handle to resize, Delete removes it
+  private selImage: ParsedImage | null = null;
+  private imgDrag: { id: number; img: ParsedImage; mode: "move" | "resize"; from: { x: number; y: number }; rect0: ParsedImage["rect"] } | null = null;
+  private imgPreview: ParsedImage["rect"] | null = null; // tile-local, while dragging
+
+  public hasPicture(): boolean { return !!this.selImage; }
+  private worldRectOf(img: ParsedImage, r: ParsedImage["rect"] = img.rect) {
+    const t = img.tag ? this.doc?.tiles.get(img.tag) : null;
+    const ox = t?.rect.left ?? 0, oy = t?.rect.top ?? 0;
+    return { l: ox + r.left, t: oy + r.top, r: ox + r.right, b: oy + r.bottom };
+  }
+  /** The topmost picture under a world point. */
+  private imageAt(x: number, y: number): ParsedImage | null {
+    let hit: ParsedImage | null = null;
+    for (const t of this.doc?.tiles.values() ?? []) for (const img of t.images ?? []) {
+      const b = this.worldRectOf(img);
+      if (x >= b.l && x <= b.r && y >= b.t && y <= b.b) hit = img;
+    }
+    return hit;
+  }
+  private handleSize() { return (22 * (window.devicePixelRatio || 1)) / this.zoom; }
+  private onImageHandle(w: { x: number; y: number }) {
+    const b = this.worldRectOf(this.selImage!), h = this.handleSize();
+    return Math.abs(w.x - b.r) <= h && Math.abs(w.y - b.b) <= h;
+  }
+  private selectImage(img: ParsedImage | null) {
+    if (this.selImage === img) return;
+    this.selImage = img;
+    this.overlayDirty = true;
+    this.drawOverlay();
+    this.onSelectionChange?.();
+  }
+  private beginImageDrag(e: PointerEvent, w: { x: number; y: number }, mode: "move" | "resize") {
+    const img = this.selImage!;
+    this.imgDrag = { id: e.pointerId, img, mode, from: w, rect0: { ...img.rect } };
+    this.imgPreview = { ...img.rect };
+  }
+  private dragImage(w: { x: number; y: number }) {
+    const d = this.imgDrag!, r = d.rect0, dx = w.x - d.from.x, dy = w.y - d.from.y;
+    if (d.mode === "move") this.imgPreview = { left: r.left + dx, top: r.top + dy, right: r.right + dx, bottom: r.bottom + dy };
+    else { // keeps its proportions
+      const k = Math.max(0.05, (r.right - r.left + dx) / (r.right - r.left));
+      this.imgPreview = { left: r.left, top: r.top, right: r.left + (r.right - r.left) * k, bottom: r.top + (r.bottom - r.top) * k };
+    }
+    this.render();
+    this.overlayDirty = true;
+    this.drawOverlay();
+  }
+  private endImageDrag(commit: boolean) {
+    const d = this.imgDrag!, next = this.imgPreview!;
+    this.imgDrag = null; this.imgPreview = null;
+    const moved = Math.hypot(next.left - d.rect0.left, next.top - d.rect0.top) + Math.abs(next.right - d.rect0.right);
+    if (!commit || moved * this.zoom < 3) { this.render(); return; } // a tap only selects
+    const t = d.img.tag ? this.doc?.tiles.get(d.img.tag) : null;
+    const pr = t ? t.pageRect ?? t.rect : null;
+    const b = this.worldRectOf(d.img, next);
+    if (pr && (b.l < pr.left - 1 || b.t < pr.top - 1 || b.r > pr.right + 1 || b.b > pr.bottom + 1)) { this.onNotice?.("Pictures have to stay on the page."); this.render(); return; }
+    this.replaceImage(d.img, next);
+  }
+  /** A moved or resized picture is a new record (the old one leaves the archive on save), one undo step, like text boxes. */
+  private replaceImage(old: ParsedImage, rect: ParsedImage["rect"]) {
+    const next: ParsedImage = { ...old, saved: false, shapeUuid: crypto.randomUUID(), rect };
+    this.dropImage(old);
+    this.putImage(next);
+    this.commit({ kind: "image", from: [old], to: [next] });
+    this.selImage = next;
+    this.render();
+    this.overlayDirty = true;
+    this.drawOverlay();
+  }
+  private putImage(img: ParsedImage) {
+    const tile = img.tag ? this.doc?.tiles.get(img.tag) : null;
+    if (!tile || !this.doc) return;
+    (tile.images ??= []).push(img);
+    if (img.saved) this.doc.removedImages = (this.doc.removedImages ?? []).filter((x) => x !== img);
+    else (this.doc.addedImages ??= []).push(img);
+  }
+  private dropImage(img: ParsedImage) {
+    const tile = img.tag ? this.doc?.tiles.get(img.tag) : null;
+    if (!tile || !this.doc) return;
+    tile.images = (tile.images ?? []).filter((x) => x !== img);
+    if (img.saved) (this.doc.removedImages ??= []).push(img);
+    else this.doc.addedImages = (this.doc.addedImages ?? []).filter((x) => x !== img);
+  }
+  private renderImageFrame() {
+    const img = this.selImage!, b = this.worldRectOf(img, this.imgDrag?.img === img && this.imgPreview ? this.imgPreview : img.rect);
+    const ctx = this.ctx, px = 1 / this.zoom, h = this.handleSize();
+    ctx.save();
+    ctx.strokeStyle = "#4682ff"; ctx.lineWidth = 2 * px;
+    ctx.strokeRect(b.l, b.t, b.r - b.l, b.b - b.t);
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(b.r - h / 2, b.b - h / 2, h, h);
+    ctx.strokeRect(b.r - h / 2, b.b - h / 2, h, h);
+    ctx.restore();
+  }
+  /** Where a screen point (CSS px) is on the page: for a picture dropped onto the canvas. */
+  public worldAt(clientX: number, clientY: number) {
+    const dpr = window.devicePixelRatio || 1, r = this.canvas.getBoundingClientRect();
+    return { x: ((clientX - r.left) * dpr - this.panX) / this.zoom, y: ((clientY - r.top) * dpr - this.panY) / this.zoom };
+  }
+  /** Puts a picture on the page at `at` (else the middle of the view), at most 60% of the page, selected. One undo step. */
+  public async insertImage(bytes: Uint8Array, ext: string, at?: { x: number; y: number }): Promise<boolean> {
+    if (!this.doc) return false;
+    const bitmap = await decodeImage(bytes);
+    if (!bitmap) { this.onNotice?.("This picture could not be read."); return false; }
+    const bw = (bitmap as ImageBitmap).width, bh = (bitmap as ImageBitmap).height;
+    const p = at ?? { x: (this.canvas.width / 2 - this.panX) / this.zoom, y: (this.canvas.height / 2 - this.panY) / this.zoom };
+    const tile = this.tileAt(p.x, p.y) ?? [...this.doc.tiles.values()][0];
+    if (!tile) return false;
+    const pr = tile.pageRect ?? tile.rect;
+    const k = Math.min(1, ((pr.right - pr.left) * 0.6) / bw, ((pr.bottom - pr.top) * 0.6) / bh);
+    const w = bw * k, h = bh * k;
+    const left = Math.max(pr.left, Math.min(p.x - w / 2, pr.right - w)), top = Math.max(pr.top, Math.min(p.y - h / 2, pr.bottom - h));
+    const img: ParsedImage = { tag: tile.pageTag, saved: false, shapeUuid: crypto.randomUUID(), resId: crypto.randomUUID(), ext, bytes, bitmap,
+      rect: { left: left - tile.rect.left, top: top - tile.rect.top, right: left - tile.rect.left + w, bottom: top - tile.rect.top + h } };
+    if (this.selected.size) this.clearSelection();
+    this.putImage(img);
+    this.commit({ kind: "image", from: [], to: [img] });
+    this.selImage = img;
+    this.render();
+    this.overlayDirty = true;
+    this.drawOverlay();
+    this.onSelectionChange?.();
+    return true;
+  }
+
   public deleteSelection() {
+    if (!this.selected.size && this.selImage) { // a selected picture
+      const img = this.selImage;
+      this.selectImage(null);
+      this.dropImage(img);
+      this.commit({ kind: "image", from: [img], to: [] });
+      this.render();
+      return;
+    }
     const strokes = [...this.selected];
     if (strokes.length === 0) return;
     for (const st of strokes) this.removeStroke(st);
@@ -1656,7 +1864,7 @@ export class CanvasRenderer {
 
   /** What changes while the pen moves goes on the overlay: the stroke being drawn, a shape being dragged, the selection. */
   private drawOverlay() {
-    const live = this.currentStrokePoints.length > 0 || !!this.shapeFrom || this.selected.size > 0 || this.isLassoing || !!this.textDraft;
+    const live = this.currentStrokePoints.length > 0 || !!this.shapeFrom || this.selected.size > 0 || this.isLassoing || !!this.textDraft || this.findMarks.length > 0 || !!this.selImage;
     if (!live && !this.overlayDirty) return;
     const base = this.ctx, o = this.octx;
     this.ctx = o; // the drawing helpers paint into whichever context is current
@@ -1672,7 +1880,14 @@ export class CanvasRenderer {
       if (this.shapeFrom) { const st = this.shapeStroke(); if (st) this.drawStroke(st, false); }
       if (this.selected.size) this.renderSelectionOverlay();
       if (this.isLassoing) this.renderLassoPath();
+      if (this.selImage) this.renderImageFrame();
       if (this.textDraft) this.drawTextDraft(this.textDraft);
+      this.findMarks.forEach((m, i) => { // what "Find in note" found: a soft highlight, the current one stronger with a frame
+        const pad = 8;
+        o.fillStyle = i === this.findCurrent ? "rgba(255, 200, 0, 0.38)" : "rgba(255, 220, 0, 0.18)";
+        o.fillRect(m.l - pad, m.t - pad, m.r - m.l + 2 * pad, m.b - m.t + 2 * pad);
+        if (i === this.findCurrent) { o.strokeStyle = "#f59e0b"; o.lineWidth = 2.5 / this.zoom; o.strokeRect(m.l - pad, m.t - pad, m.r - m.l + 2 * pad, m.b - m.t + 2 * pad); }
+      });
       o.restore();
     }
     this.ctx = base;
@@ -1795,6 +2010,13 @@ export class CanvasRenderer {
       ctx.beginPath(); // ink and text never show outside their page (a fast stroke's width or smoothing can overshoot the edge)
       ctx.rect(pr.left - left, pr.top - top, pr.right - pr.left, pr.bottom - pr.top);
       ctx.clip();
+    }
+
+    // 0. Pictures, under the text and the ink (the one being dragged is drawn where it is going)
+    for (const img of tile.images ?? []) {
+      const r = this.imgDrag?.img === img && this.imgPreview ? this.imgPreview : img.rect;
+      if (img.bitmap) ctx.drawImage(img.bitmap, r.left, r.top, r.right - r.left, r.bottom - r.top);
+      else { ctx.fillStyle = "#e5e7eb"; ctx.fillRect(r.left, r.top, r.right - r.left, r.bottom - r.top); } // not decodable here
     }
 
     // 1. Render Text Boxes (math is typeset; until it is ready, or if it can't be, the LaTeX source shows)

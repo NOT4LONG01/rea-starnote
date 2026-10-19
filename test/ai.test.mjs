@@ -51,7 +51,7 @@ await test("readMath sends the picture with the key and model, and returns clean
 });
 
 await test("each failure says what to do", async () => {
-  for (const [status, re] of [[401, /did not accept the key/], [402, /needs credits/], [429, /limit for free models/], [500, /OpenRouter 500: boom/]]) {
+  for (const [status, re] of [[401, /did not accept the key/], [402, /needs credits/], [429, /The free model's limit is used up.*wait for the reset/], [500, /OpenRouter 500: boom/]]) {
     reply(status, { error: { message: "boom" } });
     await assert.rejects(ai.readMath("x"), re);
   }
@@ -62,14 +62,59 @@ await test("each failure says what to do", async () => {
   await assert.rejects(ai.readMath("x", { key: "" }), /Add your OpenRouter key/);
 });
 
+await test("readHandwritingLines asks for the numbered lines and takes them by number, also inside fences or with gaps", async () => {
+  reply(200, { choices: [{ message: { content: '```json\n{"1": " Claim ", "3": "명제"}\n```' } }] });
+  assert.deepEqual(await ai.readHandwritingLines("iVBORw0", 3), ["Claim", "", "명제"]);
+  const body = JSON.parse(sent.init.body);
+  assert.match(body.messages[0].content[0].text, /red number at its left, 1 to 3/);
+  reply(200, { choices: [{ message: { content: "Sorry, I can't read this." } }] });
+  await assert.rejects(ai.readHandwritingLines("x", 2), /not a list of lines \("Sorry, I can't read this\."\)/);
+});
+
+await test("an empty answer names the model and why; a list-of-parts answer is read; the budget leaves room to think", async () => {
+  reply(200, { choices: [{ message: { content: "" }, finish_reason: "length" }] });
+  await assert.rejects(ai.readHandwritingLines("x", 2), /vendor\/model:free ran out of room/);
+  assert.equal(JSON.parse(sent.init.body).max_tokens, 4096);
+  reply(200, { choices: [{ message: { content: null }, finish_reason: "content_filter" }] });
+  await assert.rejects(ai.readMath("x"), /vendor\/model:free gave no answer \(content_filter\)/);
+  reply(200, { choices: [{ message: { content: [{ type: "text", text: '{"1": "a", ' }, { type: "text", text: '"2": "b"}' }] } }] });
+  assert.deepEqual(await ai.readHandwritingLines("x", 2), ["a", "b"]);
+});
+
+await test("a router: tried twice, the error names the model that answered and says to pick one that reads images", async () => {
+  let calls = 0;
+  globalThis.fetch = async (url, init) => { calls++; sent = { url, init }; return new Response(JSON.stringify({ model: "some/text-only-model", choices: [{ message: { content: "" }, finish_reason: "stop" }] }), { status: 200 }); };
+  await assert.rejects(ai.readHandwritingLines("x", 1, { key: "k", model: "openrouter/free" }), /openrouter\/free \(answered by some\/text-only-model\) gave no answer.*A router can pass the picture to a model that cannot see/);
+  assert.equal(calls, 2, "one retry");
+  assert.equal(ai.isRouter("openrouter/auto"), true);
+  assert.equal(ai.isRouter("qwen/qwen2.5-vl-72b-instruct:free"), false);
+});
+
+await test("a limit inside a 200 reply (free models per day) is reported as a used-up limit and NOT retried", async () => {
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return new Response(JSON.stringify({ choices: [{ message: { content: "" }, error: { code: 429, message: "Rate limit exceeded: free-models-per-day" } }] }), { status: 200 }); };
+  await assert.rejects(ai.readHandwritingLines("x", 1, { key: "k", model: "a/b:free" }), /The free model's limit is used up.*free-models-per-day/);
+  assert.equal(calls, 1, "no retry: it would only use up more of the allowance");
+});
+
+await test("answers in other common shapes are read: a JSON array, numbered lines, 'Line 1:' labels, bold numbers", () => {
+  assert.deepEqual(ai.parseLines('["Claim", "명제"]', 2), ["Claim", "명제"]);
+  assert.deepEqual(ai.parseLines("1. Claim\n2. 명제", 2), ["Claim", "명제"]);
+  assert.deepEqual(ai.parseLines("Here you go:\nLine 1: Claim\nLine 3: x^2", 3), ["Claim", "", "x^2"]);
+  assert.deepEqual(ai.parseLines("**1.** Claim\n**2)** \"명제\"", 2), ["Claim", "명제"]);
+  assert.deepEqual(ai.parseLines("```json\n{\"1\": \"a\", \"2\": \"b\"}\n```", 2), ["a", "b"]);
+  assert.equal(ai.parseLines("I cannot read handwriting.", 2), null);
+});
+
 await test("visionModels keeps image readers only, free ones first", async () => {
   reply(200, { data: [
     { id: "a/text", name: "Text only", architecture: { input_modalities: ["text"] } },
     { id: "b/paid", name: "Alpha", architecture: { input_modalities: ["text", "image"] }, pricing: { prompt: "0.001", completion: "0.002" } },
     { id: "c/free:free", name: "Zeta", architecture: { input_modalities: ["image", "text"] } },
+    { id: "openrouter/free", name: "Free Models Router", architecture: { input_modalities: ["image", "text"] }, pricing: { prompt: "0", completion: "0" } },
   ] });
   const list = await ai.visionModels();
-  assert.deepEqual(list.map((m) => [m.id, m.free]), [["c/free:free", true], ["b/paid", false]]);
+  assert.deepEqual(list.map((m) => [m.id, m.free]), [["c/free:free", true], ["b/paid", false]], "routers are left out");
 });
 
 console.log(`\n${passed} ai tests passed`);

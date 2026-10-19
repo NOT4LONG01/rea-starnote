@@ -139,6 +139,15 @@ In the sample archive `test.note`, there are 294 total ShapeRecords across `shap
 1. **Type 2 — Freehand Stylus Ink Stroke (34 shapes):** Standard ballpoint / fountain pen strokes. Active point files exist for the current drawing state, while superseded strokes have their point streams purged by the engine to reduce file size.
 2. **Type 16 — Rich Text Box (3 shapes):** Formatted text boxes (`HELLO_INTEROP_TEST` in `Page[-5--1]`, 2 in `Page[-4--1]`). Field 7 provides local coordinates, Field 10 provides plain text, and Field 22 contains ProseMirror HTML. In multi-segment `#points` files, a 36-byte segment matching the text box bounds acts as an internal spatial anchor.
 3. **Type 46 — Brush / Highlighter Dynamics Stroke (210 shapes):** Width 5.91 px vs 3.54 px. 170 of these also exist in `stash/archivedShape/`, confirming they represent historical/undo snapshots.
+5. **Type 19 — Picture (written by REA-StarNote; INFERRED, not yet seen in a StarNote-made note).** From Onyx's public
+   `onyxsdk-base` note model, which StarNote is built on (its shape ids 2, 16 and 2000 match): `NoteShapeType.SHAPE_IMAGE = 19`.
+   Field 7 = bounds JSON (tile-local), 8 = identity matrix, 12 = 19, 14 = resource JSON
+   `{"audioDuration":0,"documentId":"<docUuid>","fileExtension":"png","fromType":0,"relativePath":"/<file>","status":0,"type":0,"uniqueId":"<resId>"}`
+   (Onyx `ShapeResource`; type 0 = image), 15 = 0 (layer), 17 line style, 18 = groupUuid, 24 shape version. The bytes go in
+   `<docUuid>/resource/data/<file>` (Onyx `ResourcePaths.docResourceDataDir`); no `#points` file, no manifest entry, no checksum.
+   StarNote's own code is encrypted (Baidu Protect), so this could not be read from StarNote itself. **Open until a phone-made
+   note with a picture is examined:** that StarNote really uses 19 and field 14 for pictures, how rotation/crop/opacity are
+   stored, the real file naming, and whether StarNote opens our pictures (`createImageRecordProtobuf` in note-serializer.ts).
 4. **Type 2000 — Cross-Tile Virtual Proxy Reference (47 shapes):** Spatial references generated when shapes overlap multiple tiles. They contain an affine matrix translation in `shapeReferenceBean.matrixValues` (e.g. $[1, 0, 0, 0, 1, 2100, 0, 0, 1]$) pointing to master shapes on neighboring tiles. They carry no `#points` files of their own.
 
 #### Color Varint Encoding:

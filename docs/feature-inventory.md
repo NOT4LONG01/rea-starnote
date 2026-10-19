@@ -25,7 +25,7 @@ Legend: HAVE = we have it, PART = partly, NO = missing. "Format risk" = needs `.
 | **Lasso** | Accurate lasso and free lasso; select, move, copy | NO | High: rewrites points/shapes |
 | **Shapes / lines** | Straight line, circle, arrow, curvy/bidirectional arrow, shape fill, favorite shapes | NO | New shape types (undocumented): high risk |
 | **Text** | Text boxes (rich text; our loader reads type 16), text select, "press and hold stylus to select text" | PART: renders text boxes, cannot create/edit | High: type 16 write path |
-| **Images / stickers** | Insert photos (batch), camera, scan document, stickers, crop | NO | Medium: image shape + resource files |
+| **Images / stickers** | Insert photos (batch), camera, scan document, stickers, crop | PART: paste / drop, move, resize, delete (type 19, format inferred; StarNote compatibility unverified) | Medium: image shape + resource files |
 | **Layers** | Add/lock/delete layers, per-layer visibility | NO (layer list ignored) | Medium: note_info layer JSON |
 | **Pages** | Add/duplicate/copy/delete page, "auto add page", reorder, page links, bookmarks, page ratio lock | PART: fixed tiles, page buttons, fit | Medium: `virtual/page` + note_info updates |
 | **Templates / covers** | Paper templates (ruled/grid/dot... + color), custom notebook covers, change template per note | PART: one hard-coded ruled page | Low for rendering; medium to write `template_json` |

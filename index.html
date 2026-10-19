@@ -9,6 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>REA-StarNote</title>
     <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="./icon-192.png" />
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
@@ -35,6 +36,7 @@
             <button class="side-item" data-filter="trash"><i data-icon="trash"></i><span>Trash</span><em id="count-trash">0</em></button>
             <button class="side-link" id="side-zotero"><i data-icon="book"></i><span>Zotero</span><em id="zotero-dot"></em></button>
           </nav>
+          <div class="side-groups hidden" id="side-groups"></div>
 
           <div class="side-drive">
             <div class="side-drive-row">
@@ -128,7 +130,14 @@
           <div class="seg">
             <button id="btn-fit" class="icon-btn" title="Fit page height"><i data-icon="fith"></i></button>
           </div>
+          <div class="pagenav" id="pagenav">
+            <button id="page-prev" title="Previous page"><i data-icon="pprev"></i></button>
+            <button id="page-here" title="Pages: add, delete, move, format"><span id="page-label">1 / 1</span></button>
+            <button id="page-next" title="Next page"><i data-icon="pnext"></i></button>
+          </div>
           <span id="zoom-level" class="zoom-level">100%</span>
+          <button id="btn-split" class="icon-btn" title="Split view: two notes side by side"><i data-icon="split"></i></button>
+          <button id="btn-find" class="icon-btn" title="Find in this note (Ctrl+F): typed and PDF text, and handwriting the AI has read"><i data-icon="search"></i></button>
           <button id="btn-page-panel" class="icon-btn" title="Page: format and page actions"><i data-icon="pagecfg"></i></button>
           <button id="btn-pen-settings" class="icon-btn" title="Pen &amp; touch settings"><i data-icon="sliders"></i></button>
           <button id="btn-more" class="icon-btn" title="More"><i data-icon="more"></i></button>
@@ -156,9 +165,24 @@
         <div id="tool-options" class="tool-options hidden"></div>
 
         <main class="canvas-container" id="canvas-container">
-          <canvas id="note-canvas"></canvas>
+          <div class="panes" id="panes">
+            <div class="pane" id="pane-0"><div class="pane-head"><span class="pane-title"></span><button class="icon-btn pane-close" data-pane="0" title="Close this half"><i data-icon="close"></i></button></div><div class="pane-body"><canvas id="note-canvas"></canvas></div></div>
+            <div class="pane-divider hidden" id="pane-divider" role="separator" title="Drag to resize the halves; double-click: half and half"></div>
+            <div class="pane hidden" id="pane-1"><div class="pane-head"><span class="pane-title"></span><button class="icon-btn pane-close" data-pane="1" title="Close this half"><i data-icon="close"></i></button></div><div class="pane-body"><canvas id="note-canvas-2"></canvas></div></div>
+          </div>
           <aside id="page-rail" class="page-rail hidden" aria-label="Pages"></aside>
           <aside id="page-panel" class="page-panel hidden" aria-label="Page settings"></aside>
+          <div id="find-bar" class="find-bar hidden" role="search">
+            <div class="find-row">
+              <input id="find-input" type="search" placeholder="Find in this note" autocomplete="off" spellcheck="false" />
+              <span id="find-count" class="find-count"></span>
+              <button id="find-prev" class="icon-btn" title="Previous (Shift+Enter)">&#8593;</button>
+              <button id="find-next" class="icon-btn" title="Next (Enter)">&#8595;</button>
+              <button id="find-close" class="icon-btn" title="Close (Esc)"><i data-icon="close"></i></button>
+            </div>
+            <div class="find-row2"><div id="find-status" class="find-status"></div><button id="find-ai" class="btn btn-sm hidden" title="Send a picture of the handwriting on the pages not read yet to your AI model (OpenRouter), so Find and the assistant can search it">Read handwriting (AI)</button><button id="find-ai-model" class="btn btn-sm hidden" title="AI settings: pick a model that reads images">Change model</button></div>
+            <details id="find-read" class="find-read hidden"><summary>What was read</summary><div id="find-read-list"></div></details>
+          </div>
           <div id="page-browser" class="page-browser hidden" role="dialog" aria-label="Pages of this note">
             <div class="pb-head"><span id="pb-title">Pages</span><button id="pb-close" class="icon-btn" title="Close"><i data-icon="close"></i></button></div>
             <div id="pb-grid" class="pb-grid"></div>
@@ -179,11 +203,6 @@
             </div>
           </div>
           <button id="add-page-pill" class="add-page-pill hidden" title="Add a page at the end of the note"><i data-icon="plus"></i><span>Add page</span></button>
-          <div class="pagenav" id="pagenav">
-            <button id="page-prev" title="Previous page"><i data-icon="pprev"></i></button>
-            <button id="page-here" title="Pages: add, delete, move, format"><span id="page-label">1 / 1</span></button>
-            <button id="page-next" title="Next page"><i data-icon="pnext"></i></button>
-          </div>
         </main>
       </section>
 

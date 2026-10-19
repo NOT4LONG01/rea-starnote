@@ -68,6 +68,10 @@ class MainActivity : TauriActivity() {
      */
     @JavascriptInterface
     fun googleAuthorize(id: Int, scopes: String, interactive: Boolean) {
+      try { googleAuthorizeNow(id, scopes, interactive) } catch (e: Throwable) { answerAuth(id, null, "${e.javaClass.simpleName}: ${e.message}") }
+    }
+
+    private fun googleAuthorizeNow(id: Int, scopes: String, interactive: Boolean) {
       val req = AuthorizationRequest.builder().setRequestedScopes(scopes.split(" ").filter { it.isNotBlank() }.map { Scope(it) }).build()
       runOnUiThread {
         Identity.getAuthorizationClient(this@MainActivity).authorize(req)

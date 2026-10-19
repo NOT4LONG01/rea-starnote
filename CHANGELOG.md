@@ -2,8 +2,55 @@
 
 Versions follow [SemVer](https://semver.org). Newest first.
 
-## Unreleased (towards 1.1)
+Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
+
+## Unreleased (next QA build: 1.0.5)
+
+## 1.0.0 (2026-10-19): the first stable release
+The code of QA build 1.0.4, which passed on Windows (owner: "all works"), Linux and the owner's phone. Highlights since the
+1.0.0-beta.1 of 2026-10-16: handwriting search through the AI and Find in typed and PDF text; Convert to LaTeX; pictures in
+notes; split view (resizable, saved groups); PDF text and highlights; palm rejection and lasso fixes; Android Google sign-in with
+the phone's account; the app icon; README for users and the MIT license. Details: the QA builds below. Next: 1.1.0, the AI tutor
+/ agent for students and researchers.
+
+## 1.0.4 (2026-10-19)
+QA build (internal), the candidate for 1.0.0. Since 1.0.3:
+- README for users (what it does, install, accounts, privacy, license) and the MIT license; 1.0.0 will be the first stable version, and 1.1.0 the big update with the AI tutor / agent for students and researchers (owner).
+- Read handwriting (AI): answers in other common shapes are read too (a JSON array, "1. text", "Line 1: text"); an answer that still isn't a list of lines is quoted in the message (Linux QA on the owner's 1.0.3 screenshots: Nano Banana 2 Lite read page 1, pages 2-3 failed only on the format).
+- Split view halves are resizable (owner): drag the divider (20-80%, up and down when the halves are stacked); the size is remembered, a saved group keeps its own; double-click the divider for half and half.
+
+## 1.0.3 (2026-10-19)
+QA build (internal), the candidate for 1.1.0. Since 1.0.2:
+- The double tap on the eraser that clears the page no longer leaves its options panel open over the page (Linux QA 1.0.2).
+- Read handwriting (AI): a used-up free-model limit (429, or a limit/quota error inside the reply) says so plainly (wait for the reset, add a little credit, or pick a paid model) and is not retried (that only used up more of the allowance); after a failure the Find bar says how many pages are still unread (the ones read are kept). Owner, 1.0.2: free models hit their limit.
+
+## 1.0.2 (2026-10-19)
+QA build (internal). Since 1.0.1:
+- **Split groups** (owner): save the two notes on screen as a named group (split button > *Save as a group…*); reopen it from *Groups* in the library sidebar or the split button in one tap; rename or delete it (the notes stay). Kept on this device. While split, the split button offers Save as a group and End split.
+- Fixed: lassoed ink could not be moved unless the Lasso tool was chosen (a selection made with the pen's side button left the pen tool active, so a drag drew instead); and the side button did nothing with the Hand tool (Windows owner, 1.0.1). Now the side button lassoes with any tool, and a drag that starts inside a selection's box moves it with the pen, a mouse or a finger; a finger outside it still pans.
+- Split view looks like one window (owner): no blue frame; each half has a slim head with its note's name and a × to close that half (the other note fills the window; both stay open in tabs); the active half's head is tinted. The split button adds the second half.
+- Read handwriting (AI): the owner's "The model gave no answer" with OpenRouter's free-models router. Routers are no longer offered (they can pass a picture to a model that cannot see), and choosing one warns; an empty answer is retried once, then the message names the model that answered and the reason; models that think first get room to answer (4096 tokens); a failure shows Retry and Change model in the Find bar.
+- Fixed: a palm resting on the screen while erasing (or lassoing, moving a selection, drawing a shape, dragging a picture) panned the page or took the gesture over; only drawing was protected (Windows owner, 1.0.1).
+- Choosing a tool only selects it; tap it again to open its options (owner). Before, the options panel opened over the top of the page, and a stroke started on it was lost (Linux QA 1.0.1, F-A). Picking the eraser and tapping it once more opens its options; a double tap on the eraser in use still clears the page.
+- **Pictures in notes**: paste (Ctrl+V) or drop a picture onto the page; select it with the select tool, move, resize (proportions kept), delete, undo. Saved in the `.note` as StarNote's engine stores images (shape type 19, file in `resource/data`; inferred from Onyx's SDK, real StarNote not yet checked). Big photos are scaled to 2400 px. Shown in library thumbnails.
+
+## 1.0.1 (2026-10-19)
+QA build (internal; only x.x.0 is stable). Everything since 1.1.0-alpha.1:
+- **Handwriting is read only by the AI, when asked** (owner): *Read handwriting (AI)* in the Find bar sends each page's ink, lines numbered, to your OpenRouter model; the on-device recognizers (Windows ink, ML Kit on Android) are removed, so the Android app is smaller and downloads nothing. Typed and PDF text are still searched offline. The language picker is gone (the AI reads Korean and English together).
+- A proper app icon (a note page with a star and handwriting) for Windows, Linux, Android (adaptive, cropped safely by any launcher shape) and the browser tab, from one source (`src-tauri/icons/source/`).
+- **Split view**: the split button in the top bar shows a second note (or PDF) beside the current one, each with its own pages, zoom and undo; the toolbar works on the half last touched; Back or the button ends it.
+- Fixed: leaving a note with unsaved ink and reopening it right away showed the last strokes twice (and the next save wrote them twice).
+- The work planned as 1.1.0 ships to QA as 1.0.x builds; the next stable is 1.1.0. Android version codes follow the version (1.0.1 -> 1000001).
+- A library that a newer build upgraded opens instead of failing ("requested version is less than the existing version").
+
+## 1.1.0-alpha.1 (2026-10-19)
+First QA build of this work, before the renumbering (the next one is 1.0.1), for Windows QA and the owner's phone.
 ### Added
+- **Find in note** (search button, Ctrl+F): typed text everywhere; handwriting where the device has a recognizer (Windows' own ink recognizer, Google ML Kit on Android), read in the background page by page and kept by the app. Reads Korean and English together by default; *What was read* shows the recognized text; ink written while the bar is open is read a moment later.
+- Imported PDFs keep their text (read at import, kept on the device): Find searches it, and the words the highlighter covers are listed as highlighted passages under *What was read*. Highlighter strokes are no longer sent to the handwriting recognizer.
+- The page navigation (|< 1 / 2 >|) sits in the top bar beside Fit page instead of floating over the page.
+- Palm rejection is on by default once a pen has been used on the device (a finger only pans); a pen-less device still draws with a finger. The choice in Pen & touch is kept.
+- The editor opens with the Hand tool selected.
 - Select several notes and notebooks in the library (select button, Ctrl/⌘-click, or press and hold) and Move to…, Duplicate, Download (one .zip), Colour…, Move to trash; Restore / Delete forever in the Trash.
 - The rename dialog is the app's own (no "JavaScript - tauri://localhost" prompt, no full-screen editor on Android); notebook and section tabs each get their own colour until one is picked; selecting no longer makes Sections rows jump.
 - Android: **Sign in with Google** uses the phone's Google account (Play services); no client ID or secret on the phone. Needs an OAuth client of type Android in the Cloud project (user guide, Google Drive).

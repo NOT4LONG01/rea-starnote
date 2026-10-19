@@ -16,7 +16,7 @@ REA-StarNote's products are the **Android, Windows and Linux apps** (with Google
 | [development.md](development.md) | setting up, scripts, tests, builds, what each config file is for |
 | [architecture.md](architecture.md) | how the code is organised and why |
 | [branching.md](branching.md) | branches, merging, tags, versions, releases |
-| [roadmap.md](roadmap.md) | what each next version brings (1.1.0 handwriting search, 1.1.1 AI assistant) |
+| [roadmap.md](roadmap.md) | what each next version brings (only x.x.0 is stable, QA builds 1.0.1, 1.0.2, ...; handwriting search and PDF text, then the AI assistant) |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | the short checklist before you commit |
 | [../CHANGELOG.md](../CHANGELOG.md) | what changed in each version |
 
