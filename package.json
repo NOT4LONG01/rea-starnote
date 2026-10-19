@@ -1,6 +1,7 @@
 {
   "name": "rea-starnote",
   "private": true,
+  "license": "MIT",
   "version": "1.0.3",
   "type": "module",
   "scripts": {

@@ -8,11 +8,10 @@ Only `x.x.0` versions are stable; every QA build in between takes the next last 
 
 | Version | Branch | What | State |
 |---|---|---|---|
-| 1.0.0 | (none) | never released: its 1.0.0-beta.1 stays as the tag `v1.0.0-beta.1`; `release/1.0` was removed (owner, 2026-10-19) | skipped |
+| 1.0.0 (first stable) | `main` (merged from `dev`) | everything in the QA builds 1.0.1-1.0.4: notes, notebooks and sections, handwriting search (AI), Convert to LaTeX, PDF text and highlights, pictures, split view and groups, palm rejection, Android Google sign-in, the app icon; README for users and the MIT license | after QA 1.0.4 (owner, 2026-10-19); the old `release/1.0` line was removed |
 | 1.0.x (QA builds) | `dev` | multi-select, the name REA-StarNote; **handwriting search inside a note**, **Convert to LaTeX**, PDF text and highlights, Android Google sign-in, palm rejection, Hand at start | next QA build 1.0.1 (the first one was named 1.1.0-alpha.1) |
-| a later 1.1.x | `dev` | **AI assistant** (below) | planned |
 | 1.0.2 | `dev` | **Pictures in notes**: paste (Ctrl+V) and drag in, shown on the page, move, resize, delete; later from a file and the Android camera. Stored the way StarNote's engine stores images (type 19, inferred from Onyx's SDK); real StarNote opening such a note is unverified until checked on the phone | paste, drop, move, resize, delete done; from a file / camera later |
-| 1.1.0 (first stable) | `main` (merged from `dev`) | everything in the 1.0.x QA builds (handwriting search, Convert to LaTeX, PDF text and highlights, split view, the app icon, the AI assistant if ready) **plus pictures in notes** | owner, 2026-10-19: order is 1.0.0, QA builds 1.0.1, 1.0.2, ..., then 1.1.0 when pictures are in and the owner calls it stable |
+| **1.1.0** (stable, the big update) | `main` (merged from `dev`) | **the AI tutor / agent for students and researchers** (below), built and tested in QA builds 1.0.5, 1.0.6, ... | next, after 1.0.0 (owner, 2026-10-19) |
 
 ## Handwriting search inside a note (first in 1.0.1)
 *Find in note* (a search button in the editor, Ctrl+F): typed and PDF text everywhere, offline; handwriting once the AI has
@@ -30,11 +29,12 @@ original ink; on Windows its COM API gives a page's XML with the ink data, which
 Windows-only import (or a CLI step) that reads a section's pages and writes `.note` notes (pages with strokes and typed text),
 tested on copies of the owner's sample sections, which stay private (never in the repo).
 
-## AI assistant for students and researchers (a later 1.0.x)
-An assistant that sees what you wrote and helps with it, through the AI provider *you* connect.
+## 1.1.0: the AI tutor / agent for students and researchers (the big update)
+The headline of 1.1.0 (owner, 2026-10-19): a tutor and agent that sees what you wrote and helps with it, through the AI
+provider *you* connect. Built on `dev` and tested in QA builds 1.0.5, 1.0.6, ...; released as 1.1.0 when the owner calls it stable.
 
 **What it reads (owner, 2026-10-19):** the note's text as the app already indexes it for Find in note, so questions about a
-whole notebook do not need page images: typed text, the handwriting read on the device (Korean and English, line by line),
+whole notebook do not need page images: typed text, the handwriting the AI has read (Korean and English, line by line),
 an imported PDF's own text, and the passages the highlighter covers on a PDF ("summarise what I highlighted", "quiz me on my
 highlights"). Images of the ink are sent only where text is not enough (math, diagrams). Built for 1.0.1: the index
 (`src/integrations/handwriting.ts`: lines, PDF lines and words, highlighted passages); *What was read* in the Find bar shows it.
@@ -59,4 +59,7 @@ highlights"). Images of the ink are sent only where text is not enough (math, di
 **Open decisions (for when the assistant starts)**
 - Which models to offer by default, and whether to show the cost of a question before sending.
 - Whether answers are kept with the note (a history per page) or only inserted when asked.
-- Offline: the assistant needs internet; handwriting search (1.0.1) keeps working offline on Windows and Android.
+- Offline: the assistant needs internet (as does reading handwriting, which goes through the AI since 1.0.1); typed and PDF
+  text search work offline.
+- What QA showed so far: free models often fail on handwriting or run out of their daily limit; a strong vision model (Gemini
+  3 Pro Image) read the owner's handwriting well. Pricing per request should be visible before sending.

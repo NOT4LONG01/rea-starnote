@@ -5,6 +5,7 @@ Versions follow [SemVer](https://semver.org). Newest first.
 Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
 
 ## Unreleased (next QA build: 1.0.4)
+- README for users (what it does, install, accounts, privacy, license) and the MIT license; 1.0.0 will be the first stable version, and 1.1.0 the big update with the AI tutor / agent for students and researchers (owner).
 - Read handwriting (AI): answers in other common shapes are read too (a JSON array, "1. text", "Line 1: text"); an answer that still isn't a list of lines is quoted in the message (Linux QA on the owner's 1.0.3 screenshots: Nano Banana 2 Lite read page 1, pages 2-3 failed only on the format).
 - Split view halves are resizable (owner): drag the divider (20-80%, up and down when the halves are stacked); the size is remembered, a saved group keeps its own; double-click the divider for half and half.
 
