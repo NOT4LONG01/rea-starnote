@@ -1,18 +1,14 @@
 /**
- * Handwriting search: the ink of a note is cut into lines, each line goes to the platform's own recognizer, and the text that
- * comes back (with where it was written) is what "Find in note" searches. Recognizers: Windows' ink recognizer (Rust side,
- * `ink_recognize`), Google ML Kit on Android (`StarNoteAndroid.recognizeInk`). Linux and the browser have none: they find
- * typed text only. Nothing here touches the .note file.
+ * Handwriting search: the ink of a note is cut into lines, and an AI model (the user's OpenRouter connection, only when asked)
+ * reads a picture of each page with its lines numbered; the text per line (with where it was written) is what "Find in note"
+ * searches and what the AI assistant reads. No recognizer on the device (owner, 2026-10-19). Nothing here touches the .note file.
  */
-import { isDesktopApp, nativeInvoke } from "./net";
 
 export interface Box { l: number; t: number; r: number; b: number }
 /** A stroke in world coordinates. */
-export interface InkStroke { points: { x: number; y: number }[] }
+export interface InkStroke { points: { x: number; y: number }[]; width?: number }
 export interface InkLine { strokes: InkStroke[]; box: Box }
 export interface InkHit { page: string; text: string; box: Box }
-/** Lines of ink as [x, y] point lists, and a language tag ("ko", "en"); one answer (or null) per line. */
-export type Recognizer = (lines: [number, number][][][], lang: string) => Promise<(string | null)[]>;
 
 const boxOf = (pts: { x: number; y: number }[]): Box => {
   let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
@@ -100,41 +96,33 @@ export function findIn(text: string, query: string): { from: number; to: number 
   return out;
 }
 
-/** The platform's recognizer, or null where there is none (Linux, the browser). Tests can install `window.__fakeInk`. */
-export function platformRecognizer(): Recognizer | null {
-  const w = window as any;
-  if (w.__fakeInk) return w.__fakeInk;
-  if (w.StarNoteAndroid?.recognizeInk) return androidRecognizer;
-  if (isDesktopApp() && /Windows/i.test(navigator.userAgent)) {
-    return async (lines, lang) => {
-      const r = await nativeInvoke<{ texts: (string | null)[]; used: string; matched: boolean }>("ink_recognize", { lines, lang });
-      lastRecognizerNote = r.matched ? "" : `${lang === "ko" ? "Korean" : lang === "en" ? "English" : lang} handwriting isn't installed in Windows, so "${r.used}" read it. Add it in Settings > Time & language > Language > (the language) > Language options > Handwriting.`;
-      return r.texts;
-    };
+/**
+ * A page's ink drawn black on white with each line numbered in red at its left (what the AI is shown to read the page line
+ * by line), as a PNG (base64, no prefix). The longest side is at most `maxPx`.
+ */
+export function numberedInkImage(lines: InkLine[], maxPx = 1600): string | null {
+  if (!lines.length) return null;
+  const all = lines.map((l) => l.box).reduce(union);
+  const label = Math.max(28, ...lines.map((l) => (l.box.b - l.box.t) * 0.6)), pad = 24;
+  const box = { l: all.l - label * 2.2 - pad, t: all.t - pad, r: all.r + pad, b: all.b + pad };
+  const k = Math.min(1, maxPx / Math.max(box.r - box.l, box.b - box.t));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round((box.r - box.l) * k)); c.height = Math.max(1, Math.round((box.b - box.t) * k));
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  g.scale(k, k); g.translate(-box.l, -box.t);
+  g.strokeStyle = "#000"; g.lineCap = "round"; g.lineJoin = "round";
+  for (const line of lines) for (const st of line.strokes) {
+    g.lineWidth = Math.max(2, st.width ?? 3);
+    g.beginPath();
+    st.points.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+    if (st.points.length === 1) g.lineTo(st.points[0].x + 0.5, st.points[0].y);
+    g.stroke();
   }
-  return null;
+  g.fillStyle = "#d00"; g.font = `bold ${label}px sans-serif`; g.textBaseline = "middle";
+  lines.forEach((line, i) => g.fillText(String(i + 1), box.l + pad / 2, (line.box.t + line.box.b) / 2));
+  return c.toDataURL("image/png").split(",")[1] ?? null;
 }
-
-/** Set when the last reading could not use the asked language (Windows read it with another recognizer): shown in the Find bar. */
-export let lastRecognizerNote = "";
-
-let nextReq = 1;
-const pending = new Map<number, { ok: (r: (string | null)[]) => void; fail: (e: Error) => void }>();
-/** Android: the Kotlin side answers through window.__inkDone(id, json) (ML Kit works asynchronously, and may first fetch a model). */
-const androidRecognizer: Recognizer = (lines, lang) => new Promise((resolve, reject) => {
-  const w = window as any;
-  w.__inkDone ??= (id: number, json: string) => { const p = pending.get(id); pending.delete(id); p?.ok(JSON.parse(json)); };
-  w.__inkFail ??= (id: number, message: string) => { const p = pending.get(id); pending.delete(id); p?.fail(new Error(message)); };
-  const id = nextReq++;
-  pending.set(id, { ok: resolve, fail: reject });
-  try { w.StarNoteAndroid.recognizeInk(id, JSON.stringify(lines), lang); } catch (e) { pending.delete(id); reject(e); }
-});
-
-/** The language to read handwriting in: the user's choice, else both (notes often mix Korean and English). */
-export const inkLanguage = () => {
-  try { const v = localStorage.getItem("sn.inklang"); if (v) return v; } catch { /* private mode */ }
-  return "both";
-};
 
 // ---------- PDF text: read from the PDF when it is imported (its pages become pictures), searched by Find, and the words a
 // highlighter stroke covers count as highlighted. Kept by the app like the handwriting, never in the .note.

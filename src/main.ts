@@ -8,14 +8,13 @@ import { exportStarNoteArchive, exportCanvasAsSvg } from "./model/note-serialize
 import { GoogleDriveService, GoogleDriveFile, androidSignIn } from "./integrations/google-drive";
 import { loadPdfDocument, convertPdfToStarNoteDocument } from "./render/pdf-loader";
 import { library, renderThumbnail, renderPageThumbnail, LibraryItem, InkIndex } from "./data/library";
-import { groupIntoLines, inkSignature, findIn, platformRecognizer, inkLanguage, Box, pdfLines, pdfWords, highlightedPassages, PdfRun } from "./integrations/handwriting";
-import * as handwriting from "./integrations/handwriting";
+import { groupIntoLines, inkSignature, findIn, numberedInkImage, Box, InkStroke, pdfLines, pdfWords, highlightedPassages, PdfRun } from "./integrations/handwriting";
 import { isFolder, childrenOf, descendantsOf, pathOf, canMoveTo, noteCount, visibleTrash, liveParent, byPlace, orderAt, rootNotebookOf } from "./data/folders";
 import { isDesktopApp } from "./integrations/net";
 import { syncLibrary } from "./data/sync";
 import { ZoteroClient, ZoteroItem, ZoteroPdf, ZoteroCollection } from "./integrations/zotero";
 import { exportAnnotatedPdf, safeFileName } from "./render/pdf-export";
-import { aiKey, aiModel, setAiKey, setAiModel, aiReady, visionModels, readMath } from "./integrations/ai";
+import { aiKey, aiModel, setAiKey, setAiModel, aiReady, visionModels, readMath, readHandwritingLines } from "./integrations/ai";
 import JSZip from "jszip";
 
 // ---------------------------------------------------------------- icons
@@ -1765,7 +1764,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     hydrateIcons(grid);
   }
 
-  // ---------- Find in note: typed text everywhere, handwriting where the device has a recognizer (read in the background, page by page)
+  // ---------- Find in note: typed and PDF text always; handwriting once the AI has read it (only when asked: "Read handwriting")
   const find = { hits: [] as { page: string; box: Box }[], i: -1, index: null as InkIndex | null, noteId: "", run: 0, pdf: null as Record<string, PdfRun[]> | null, pdfLines: {} as Record<string, { text: string; box: Box }[]>, pdfNote: "", pdfLoad: Promise.resolve() };
   /** A PDF page's text, placed on the page's picture as it is laid out now (pages can move). */
   const toWorld = (page: Box, b: Box): Box => { const w = page.r - page.l, hh = page.b - page.t; return { l: page.l + b.l * w, r: page.l + b.r * w, t: page.t + b.t * hh, b: page.t + b.b * hh }; };
@@ -1780,15 +1779,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   /** What the status line adds for a PDF: its text is searched, or why it can't be. */
   const pdfStatus = () => active?.item.kind !== "pdf" ? "" : find.pdf ? " PDF text is searched too." : " This PDF's text was not kept (imported before text search, or a scan): import the PDF again to search it.";
-  const findInput = $<HTMLInputElement>("find-input"), findStatus = $("find-status"), findLang = $<HTMLSelectElement>("find-lang");
+  const findInput = $<HTMLInputElement>("find-input"), findStatus = $("find-status");
   const findOpen = () => !$("find-bar").classList.contains("hidden") && !$("find-bar").classList.contains("leaving");
   function openFind() {
-    findLang.value = inkLanguage();
     setShown($("find-bar"), true);
     $("btn-find").classList.add("on");
     findInput.focus(); findInput.select();
     void loadPdfText().then(() => { runFind(false); renderFindRead(); });
-    void readInk();
+    void loadInk();
   }
   function closeFind() {
     find.run++; // stops a reading in progress
@@ -1796,47 +1794,50 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("btn-find").classList.remove("on");
     renderer.setFindMarks([], -1);
   }
-  /** Reads the handwriting of the pages whose ink changed since last time; results show up page by page. */
-  async function readInk() {
-    if (!active) return;
-    const rec = platformRecognizer(), lang = findLang.value, id = active.item.id, run = ++find.run;
-    if (!rec) { await loadPdfText(); findStatus.textContent = "This device can't read handwriting: finding typed text only." + pdfStatus(); return; }
+  /** The handwriting already read for this note (kept by the app), and which pages still need reading (new or changed ink). */
+  async function loadInk(): Promise<{ tag: string; strokes: InkStroke[] }[]> {
+    if (!active) return [];
+    const id = active.item.id;
     let idx = find.noteId === id ? find.index : null;
-    idx ??= (await library.getInk(id).catch(() => undefined)) ?? null;
-    if (!idx || idx.lang !== lang) idx = { lang, pages: {} };
+    idx ??= (await library.getInk(id).catch(() => undefined)) ?? { lang: "ai", pages: {} };
+    if (active?.item.id !== id) return [];
     find.index = idx; find.noteId = id;
     const pages = renderer.inkByPage();
     for (const tag of Object.keys(idx.pages)) if (!pages.some((p) => p.tag === tag)) delete idx.pages[tag]; // a page without ink now
     const todo = pages.filter((p) => idx!.pages[p.tag]?.sig !== inkSignature(p.strokes));
-    const langs = lang === "both" ? ["en", "ko"] : [lang], notes = new Set<string>();
+    const read = Object.values(idx.pages).reduce((k, pg) => k + new Set(pg.lines.map((l) => `${l.box.t},${l.box.l}`)).size, 0);
+    $("find-ai").classList.toggle("hidden", !todo.length);
+    $("find-ai").textContent = `Read handwriting (AI)${todo.length > 1 ? `: ${todo.length} pages` : ""}`;
+    await loadPdfText();
+    findStatus.textContent = (!pages.length ? "No handwriting on these pages."
+      : todo.length ? `${todo.length} page${todo.length === 1 ? "" : "s"} of handwriting not read yet${read ? ` (${read} lines read)` : ""}: typed text is searched; the AI reads handwriting when you ask.`
+      : `Handwriting read by the AI: ${read} line${read === 1 ? "" : "s"}.`) + pdfStatus();
+    renderFindRead();
+    return todo;
+  }
+  /** Reads the pages not read yet with the AI (a picture of each page's ink, lines numbered), only when the user asks. */
+  async function readInkWithAi() {
+    if (!active) return;
+    const todo = await loadInk(), id = active.item.id, idx = find.index!, run = ++find.run;
+    if (!todo.length) return;
+    if (!aiReady() && !(await openAiSettings())) return;
+    if (!confirm(`Read handwriting sends a picture of the handwriting on ${todo.length} page${todo.length === 1 ? "" : "s"} to OpenRouter and the model you chose, using your key (one request per page).\n\nSend it?`)) return;
     let n = 0;
     for (const p of todo) {
-      if (run !== find.run) return;
-      findStatus.textContent = `Reading handwriting… page ${++n} of ${todo.length}`;
-      const lines = groupIntoLines(p.strokes);
-      const ink = lines.map((l) => l.strokes.map((st) => st.points.map((q) => [Math.round(q.x), Math.round(q.y)] as [number, number])));
+      if (run !== find.run || active?.item.id !== id) return;
+      findStatus.textContent = `The AI is reading handwriting… page ${++n} of ${todo.length}`;
+      const lines = groupIntoLines(p.strokes), png = numberedInkImage(lines);
+      if (!png) continue;
       try {
-        const read: InkIndex["pages"][string]["lines"] = [];
-        for (const L of langs) { // each line in every language: the search looks in all of them
-          const texts = await rec(ink, L);
-          if (run !== find.run) return;
-          if (handwriting.lastRecognizerNote) notes.add(handwriting.lastRecognizerNote);
-          lines.forEach((l, i) => { if (texts[i]) read.push({ text: texts[i]!, lang: L, box: l.box }); });
-        }
-        idx.pages[p.tag] = { sig: inkSignature(p.strokes), lines: read };
-      } catch (e: any) {
-        const m = String(e?.message ?? e);
-        findStatus.textContent = /unavailable/i.test(m) ? m.replace(/^unavailable:\s*/i, "Handwriting can't be read here: ") + " Finding typed text only." : `Could not read handwriting: ${m}`;
-        return;
-      }
-      runFind(false);
+        const texts = await readHandwritingLines(png, lines.length);
+        idx.pages[p.tag] = { sig: inkSignature(p.strokes), lines: lines.map((l, i) => ({ text: texts[i], lang: "ai", box: l.box })).filter((l) => l.text) };
+        await library.putInk(id, idx).catch(() => undefined); // kept by the app (never in the .note): a page is read once
+      } catch (e: any) { findStatus.textContent = `Could not read handwriting: ${e?.message ?? e}`; return; }
+      if (run === find.run) runFind(false);
     }
-    if (todo.length) await library.putInk(id, idx).catch(() => undefined); // kept by the app (never in the .note), reused next time
-    const read = Object.values(idx.pages).reduce((k, pg) => k + new Set(pg.lines.map((l) => `${l.box.t},${l.box.l}`)).size, 0);
-    const name = lang === "both" ? "한국어 + English" : lang === "ko" ? "한국어" : "English";
-    findStatus.textContent = (read ? `Handwriting read (${name}): ${read} line${read === 1 ? "" : "s"}` : "No handwriting on these pages.") + (notes.size ? ` ${[...notes].join(" ")}` : "") + (await loadPdfText(), pdfStatus());
-    renderFindRead();
+    if (run === find.run) await loadInk();
   }
+  $("find-ai").addEventListener("click", () => void readInkWithAi());
   /** The passages of each PDF page that the highlighter covers (worked out from the strokes and the page's words). */
   function pdfHighlights(): Record<string, { text: string; box: Box }[]> {
     if (!find.pdf || find.pdfNote !== active?.item.id) return {};
@@ -1919,14 +1920,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.key === "Enter") { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); }
     else if (e.key === "Escape") { e.preventDefault(); closeFind(); }
   });
-  // ink written while Find is open is read a moment after the pen stops (only changed pages are read again)
+  // ink written while Find is open: the status says a moment later that it is not read yet
   let findIdle = 0;
   const onChangeBeforeFind = renderer.onChange;
   renderer.onChange = () => {
     onChangeBeforeFind?.();
-    if (findOpen()) { clearTimeout(findIdle); findIdle = window.setTimeout(() => { if (findOpen()) { renderFindRead(); void readInk(); } }, 1500); }
+    if (findOpen()) { clearTimeout(findIdle); findIdle = window.setTimeout(() => { if (findOpen()) void loadInk(); }, 1500); } // shows what is not read yet; reading costs AI use, so only on request
   };
-  findLang.addEventListener("change", () => { try { localStorage.setItem("sn.inklang", findLang.value); } catch { /* private mode */ } find.index = null; find.noteId = ""; void readInk(); });
 
   // ---------- page panel (right): the page's format, live, and the page actions; toggled from the top bar
   const panelOn = () => pref.get("sn.pagepanel", "0") === "1";

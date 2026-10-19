@@ -62,6 +62,15 @@ await test("each failure says what to do", async () => {
   await assert.rejects(ai.readMath("x", { key: "" }), /Add your OpenRouter key/);
 });
 
+await test("readHandwritingLines asks for the numbered lines and takes them by number, also inside fences or with gaps", async () => {
+  reply(200, { choices: [{ message: { content: '```json\n{"1": " Claim ", "3": "명제"}\n```' } }] });
+  assert.deepEqual(await ai.readHandwritingLines("iVBORw0", 3), ["Claim", "", "명제"]);
+  const body = JSON.parse(sent.init.body);
+  assert.match(body.messages[0].content[0].text, /red number at its left, 1 to 3/);
+  reply(200, { choices: [{ message: { content: "Sorry, I can't read this." } }] });
+  await assert.rejects(ai.readHandwritingLines("x", 2), /not the expected list of lines/);
+});
+
 await test("visionModels keeps image readers only, free ones first", async () => {
   reply(200, { data: [
     { id: "a/text", name: "Text only", architecture: { input_modalities: ["text"] } },

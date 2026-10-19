@@ -1,6 +1,6 @@
 /**
  * AI reading through OpenRouter (one key for many models; free models available): the user's own key, typed into the app and kept
- * on this device only. Used for "Convert to LaTeX" (handwritten math -> LaTeX); later the AI assistant uses the same connection.
+ * on this device only. Used for "Convert to LaTeX" (handwritten math -> LaTeX) and for reading handwriting for Find; the AI assistant uses the same connection.
  * Nothing is sent unless the user asks for it.
  */
 import { netFetch } from "./net";
@@ -44,10 +44,30 @@ export function cleanLatex(s: string): string {
   return t;
 }
 
+const LINES_PROMPT = (n: number) => `The image shows a page of handwritten notes (Korean and/or English, maybe math). Each line of ` +
+  `handwriting has a red number at its left, 1 to ${n}. Transcribe every numbered line exactly as written (math as plain text ` +
+  `or LaTeX, keep the language). Reply with JSON only, no code fences: {"1": "text of line 1", "2": "...", ...}; use "" for a line ` +
+  `that is not text (a drawing, a scribble).`;
+
+/** Reads a page of handwriting whose lines are numbered 1..n in the picture (see numberedInkImage): the text of each line. */
+export async function readHandwritingLines(png: string, n: number, opts: { key?: string; model?: string } = {}): Promise<string[]> {
+  const w = window as any;
+  const raw: string = w.__fakeAiLines ? JSON.stringify(await w.__fakeAiLines(png, n)) : await ask(png, LINES_PROMPT(n), Math.min(4000, 200 + n * 60), opts);
+  const json = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  let got: Record<string, unknown>;
+  try { got = JSON.parse(json.slice(json.indexOf("{"), json.lastIndexOf("}") + 1)); } catch { throw new Error("The model's answer was not the expected list of lines; try again or pick another model."); }
+  return Array.from({ length: n }, (_, i) => (typeof got[String(i + 1)] === "string" ? (got[String(i + 1)] as string).trim() : ""));
+}
+
 /** Reads handwritten math from a PNG (base64, no prefix) into LaTeX. Throws with a message the user can act on. */
 export async function readMath(png: string, opts: { key?: string; model?: string } = {}): Promise<string> {
   const w = window as any;
   if (w.__fakeAi) return cleanLatex(await w.__fakeAi(png)); // tests
+  return cleanLatex(await ask(png, PROMPT, 1200, opts));
+}
+
+/** One picture and one instruction to the chosen model; the answer's text. Throws with a message the user can act on. */
+async function ask(png: string, prompt: string, maxTokens: number, opts: { key?: string; model?: string }): Promise<string> {
   const key = opts.key ?? aiKey(), model = opts.model ?? aiModel();
   if (!key) throw new Error("Add your OpenRouter key first (More > AI settings).");
   if (!model) throw new Error("Pick a model first (More > AI settings).");
@@ -57,8 +77,8 @@ export async function readMath(png: string, opts: { key?: string; model?: string
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "REA-StarNote" },
       body: JSON.stringify({
-        model, temperature: 0, max_tokens: 1200,
-        messages: [{ role: "user", content: [{ type: "text", text: PROMPT }, { type: "image_url", image_url: { url: `data:image/png;base64,${png}` } }] }],
+        model, temperature: 0, max_tokens: maxTokens,
+        messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: `data:image/png;base64,${png}` } }] }],
       }),
     });
   } catch (e: any) { throw new Error(`Could not reach OpenRouter (${e?.message ?? "network error"}).`); }
@@ -72,5 +92,5 @@ export async function readMath(png: string, opts: { key?: string; model?: string
   }
   const text = j?.choices?.[0]?.message?.content;
   if (typeof text !== "string" || !text.trim()) throw new Error("The model gave no answer; try again or pick another model.");
-  return cleanLatex(text);
+  return text;
 }

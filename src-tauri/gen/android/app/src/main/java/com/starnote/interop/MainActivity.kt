@@ -8,15 +8,6 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import com.google.mlkit.common.model.DownloadConditions
-import com.google.mlkit.common.model.RemoteModelManager
-import com.google.mlkit.vision.digitalink.DigitalInkRecognition
-import com.google.mlkit.vision.digitalink.DigitalInkRecognitionModel
-import com.google.mlkit.vision.digitalink.DigitalInkRecognitionModelIdentifier
-import com.google.mlkit.vision.digitalink.DigitalInkRecognizer
-import com.google.mlkit.vision.digitalink.DigitalInkRecognizerOptions
-import com.google.mlkit.vision.digitalink.Ink
-import org.json.JSONArray
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
@@ -34,7 +25,6 @@ class MainActivity : TauriActivity() {
 
   private var pendingBytes: ByteArray? = null
   private var web: WebView? = null
-  private val recognizers = HashMap<String, DigitalInkRecognizer>()
   private var authId = 0
 
   /** Hands a Google access token (or why there is none) back to the page: window.__gAuthDone / __gAuthFail. */
@@ -70,53 +60,8 @@ class MainActivity : TauriActivity() {
     }
   }
 
-  /** Sends a recognition result (or failure) back to the page, on the UI thread where the WebView lives. */
-  private fun answerInk(id: Int, results: List<String?>?, error: String?) {
-    val js = if (results != null) "window.__inkDone && window.__inkDone($id, ${JSONObject.quote(JSONArray(results).toString())})"
-             else "window.__inkFail && window.__inkFail($id, ${JSONObject.quote(error ?: "failed")})"
-    runOnUiThread { web?.evaluateJavascript(js, null) }
-  }
-
-  /** Recognizes lines one after the other (ML Kit answers each asynchronously). */
-  private fun recognizeLines(r: DigitalInkRecognizer, lines: JSONArray, i: Int, out: MutableList<String?>, id: Int) {
-    if (i >= lines.length()) { answerInk(id, out, null); return }
-    val ink = Ink.builder()
-    val strokes = lines.getJSONArray(i)
-    for (s in 0 until strokes.length()) {
-      val pts = strokes.getJSONArray(s)
-      if (pts.length() == 0) continue
-      val stroke = Ink.Stroke.builder()
-      for (p in 0 until pts.length()) { val xy = pts.getJSONArray(p); stroke.addPoint(Ink.Point.create(xy.getDouble(0).toFloat(), xy.getDouble(1).toFloat())) }
-      ink.addStroke(stroke.build())
-    }
-    r.recognize(ink.build())
-      .addOnSuccessListener { res -> out.add(res.candidates.firstOrNull()?.text); recognizeLines(r, lines, i + 1, out, id) }
-      .addOnFailureListener { out.add(null); recognizeLines(r, lines, i + 1, out, id) }
-  }
-
   /** What the web app calls (window.StarNoteAndroid.saveFile) instead of a browser download. */
   inner class Bridge {
-    /** Handwriting search: lines of ink as JSON ([[[x, y], ...], ...] per line), a language tag; answers via window.__inkDone. */
-    @JavascriptInterface
-    fun recognizeInk(id: Int, json: String, lang: String) {
-      try { recognizeInkNow(id, json, lang) } catch (e: Throwable) { answerInk(id, null, "${e.javaClass.simpleName}: ${e.message}") } // never a bare "Java exception"
-    }
-
-    private fun recognizeInkNow(id: Int, json: String, lang: String) {
-      val tag = when (lang) { "en" -> "en-US"; else -> lang }
-      val modelId = try { DigitalInkRecognitionModelIdentifier.fromLanguageTag(tag) } catch (e: Exception) { null }
-      if (modelId == null) { answerInk(id, null, "unavailable: no handwriting model for $lang"); return }
-      val model = DigitalInkRecognitionModel.builder(modelId).build()
-      val lines = JSONArray(json)
-      // the model is downloaded once (Wi-Fi or mobile data), then everything runs on the phone
-      RemoteModelManager.getInstance().download(model, DownloadConditions.Builder().build())
-        .addOnSuccessListener {
-          val r = recognizers.getOrPut(tag) { DigitalInkRecognition.getClient(DigitalInkRecognizerOptions.builder(model).build()) }
-          recognizeLines(r, lines, 0, ArrayList(), id)
-        }
-        .addOnFailureListener { e -> answerInk(id, null, "Could not get the handwriting model: ${e.message}") }
-    }
-
     /**
      * Google sign-in with the phone's account (Play Services). Google matches this app to the Android OAuth client by package
      * name and signing certificate, so there is no client ID or secret here. `interactive` = false only renews silently.

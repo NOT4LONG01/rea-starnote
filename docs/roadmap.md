@@ -9,16 +9,17 @@ Only `x.x.0` versions are stable; every QA build in between takes the next last 
 | 1.0.0 (stable) | `release/1.0` | the first release: notes, notebooks and sections, Pages / Infinite, PDF, Drive, Zotero, CLI; Android, Windows, Linux | 1.0.0-beta.1 out (2026-10-16); the real-phone beta check comes next |
 | 1.0.x (QA builds) | `main` (+ `feat/handwriting-recognition`) | multi-select, the name REA-StarNote; **handwriting search inside a note**, **Convert to LaTeX**, PDF text and highlights, Android Google sign-in, palm rejection, Hand at start | next QA build 1.0.1 (the first one was named 1.1.0-alpha.1) |
 | a later 1.0.x | `main` | **AI assistant** (below) | planned |
-| 1.1.0 (stable) | `release/1.1`, cut from 1.0.x | the next stable release | when the owner calls it stable |
+| a later 1.0.x | `main` | **Pictures in notes**: paste (Ctrl+V) and drag in, shown on the page, move, resize, delete; later from a file and the Android camera. Stored the way StarNote stores images; real StarNote opening such a note is unverified until checked on the phone | in progress |
+| 1.1.0 (stable) | `release/1.1`, cut from 1.0.x | everything in the 1.0.x QA builds (handwriting search, Convert to LaTeX, PDF text and highlights, split view, the app icon, the AI assistant if ready) **plus pictures in notes** | owner, 2026-10-19: order is 1.0.0, QA builds 1.0.1, 1.0.2, ..., then 1.1.0 when pictures are in and the owner calls it stable |
 
 ## Handwriting search inside a note (first in 1.0.1)
-*Find in note* (a search button in the editor, Ctrl+F): typed text everywhere, handwriting where the platform has a recognizer
-(Windows' own ink recognizer, Google ML Kit on Android; none on Linux and the web). Each match jumps to its page and is highlighted.
-Recognized text is kept by the app, never written into the `.note`. Built on the branch: line grouping and matching (unit tests),
-the Windows recognizer (type-checked for Windows), the Android bridge (builds), the stored index, the Find bar (e2e test with a
-stand-in recognizer). On the owner's OneNote pages (2026-10-17, mostly English) the English (US)
-recognizer read every line of 16 pages, 0 failures: prose comes out as readable words, math as noisy fragments (no recognizer
-reads math; that is what Convert to LaTeX is for). Next: QA of the Find bar on Windows and on the phone, then merge into `main`.
+*Find in note* (a search button in the editor, Ctrl+F): typed and PDF text everywhere, offline; handwriting once the AI has
+read it, only when asked (*Read handwriting (AI)*: a picture of each page's ink with its lines numbered, one request per page,
+the text per line kept by the app, never in the `.note`). Each match jumps to its page and is highlighted.
+**No recognizer on the device (owner, 2026-10-19):** handwriting is read only through the AI. The first builds used Windows'
+ink recognizer and Google ML Kit on Android; both were removed (smaller app, no model downloads; ML Kit had also needed
+special shrinking rules). Their test on the owner's OneNote pages (2026-10-17) read prose well and math poorly; the AI reads
+both.
 
 ## Later: OneNote ink importer
 Turn existing OneNote notes into REA-StarNote notes with their ink as real strokes (so handwriting search and the assistant can
@@ -40,7 +41,7 @@ highlights"). Images of the ink are sent only where text is not enough (math, di
 - *Ask about this*: lasso some ink (or take the whole page), ask a question ("explain this", "check this derivation", "what is
   the next step"); the answer appears in a side panel, and *Insert* puts it on the page as a text box (LaTeX for math).
 - *Read my handwriting*: turn a selection or page into typed text or LaTeX (a multimodal model reads Korean, English and math
-  from the page image, usually better than the on-device recognizers, which do not read math). The math half shipped early, in
+  from the page image; it is also how Find gets handwriting, see above). The math half shipped early, in
   1.0.1, as *Convert to LaTeX* (`src/integrations/ai.ts`).
 - *Summarise / quiz*: a section or notebook summarised, or turned into practice questions.
 - *With your papers* (researchers): relate a question to the Zotero PDFs already in the library.

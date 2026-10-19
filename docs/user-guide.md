@@ -41,15 +41,14 @@ the top lists them.
   settings*, paste the key, pick a model that reads images. The key stays on this device. Only the selection is sent, as a
   picture, to OpenRouter and that model's provider, and only when you press Σ.
 - **Pages:** the pages menu adds, deletes, moves pages and changes their format; the add-page button at the end adds one.
-- **Find in note** (the search button, or Ctrl+F): finds a word in the note's typed text, and in your handwriting where the
-  device can read it (Windows with its handwriting language installed, Android; not Linux or the browser). The handwriting is
-  read in the background the first time and again only for pages you changed, also while the bar is open (a moment after you
-  stop writing). By default each line is read in Korean *and* English and both are searched; the bar can limit it to one.
-  *What was read* (under the bar) shows the recognized text line by line.
-  In an imported PDF, Find searches the PDF's own text too, and the words you mark with the **highlighter** are listed under
-  *What was read* (`hl`) as highlighted passages. The text is read when the PDF is imported and kept on this device; a PDF
-  imported before this version (or a scan without text) needs importing again. Enter / ↓ next, Shift+Enter / ↑ previous; matches are highlighted and the view moves to each. The recognized text stays
-  in the app; the `.note` file is not changed.
+- **Find in note** (the search button, or Ctrl+F): finds a word in the note's typed text and, in an imported PDF, in the PDF's
+  own text, offline and right away. Handwriting is searched once the **AI has read it**: *Read handwriting (AI)* in the bar (it
+  asks first) sends a picture of each page's handwriting, lines numbered, to OpenRouter and the model you chose (More > AI
+  settings, your key), one request per page; Korean, English and math come back line by line. A page is read once and again
+  only when you ask after changing it. *What was read* (under the bar) shows the text per line (`ai`) and, in a PDF, the
+  passages you marked with the **highlighter** (`hl`). Enter / ↓ next, Shift+Enter / ↑ previous; matches are highlighted and
+  the view moves to each. The read text stays in the app on this device; the `.note` file is not changed. A PDF imported
+  before PDF text search (or a scan without text) needs importing again for its text.
 - **Split view** (the split button in the top bar): pick another open note, a recent one or a PDF to show beside the current
   one (one above the other on a tall screen). Each half has its own pages, zoom and undo; the tools work on the half you
   touched last (it has a blue frame). Tapping the other half's tab moves there; the button or Back ends the split.

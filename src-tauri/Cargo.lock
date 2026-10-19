@@ -3695,8 +3695,6 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-http",
  "tauri-plugin-opener",
- "windows",
- "windows-collections",
  "zip",
 ]
 
