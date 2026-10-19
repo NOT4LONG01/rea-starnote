@@ -4,7 +4,10 @@ Versions follow [SemVer](https://semver.org). Newest first.
 
 Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
 
-## Unreleased (next QA build: 1.0.2)
+## Unreleased (next QA build: 1.0.3)
+
+## 1.0.2 (2026-10-19)
+QA build (internal). Since 1.0.1:
 - **Split groups** (owner): save the two notes on screen as a named group (split button > *Save as a group…*); reopen it from *Groups* in the library sidebar or the split button in one tap; rename or delete it (the notes stay). Kept on this device. While split, the split button offers Save as a group and End split.
 - Fixed: lassoed ink could not be moved unless the Lasso tool was chosen (a selection made with the pen's side button left the pen tool active, so a drag drew instead); and the side button did nothing with the Hand tool (Windows owner, 1.0.1). Now the side button lassoes with any tool, and a drag that starts inside a selection's box moves it with the pen, a mouse or a finger; a finger outside it still pans.
 - Split view looks like one window (owner): no blue frame; each half has a slim head with its note's name and a × to close that half (the other note fills the window; both stay open in tabs); the active half's head is tinted. The split button adds the second half.
