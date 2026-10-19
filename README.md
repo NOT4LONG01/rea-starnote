@@ -33,7 +33,7 @@ How to use it: [docs/user-guide.md](docs/user-guide.md).
 | Android | `rea-starnote-<version>.apk` | Allow "install unknown apps" once for your file manager; later versions install over it |
 | Windows 10/11 | the installer from `npm run tauri build` (`.msi` / setup `.exe`) | |
 | Linux | `.deb`, `.rpm` or AppImage from `npm run tauri build` | |
-| Command line | `npm run build:cli`, then `npm run cli -- <command>` | Node 22. [docs/cli.md](docs/cli.md) |
+| Command line | `npm run build:cli`, then `npm run cli -- <command>` | Node 20 or newer (22 recommended). [docs/cli.md](docs/cli.md) |
 
 Building the apps yourself: [docs/development.md](docs/development.md) and [docs/android.md](docs/android.md).
 

@@ -4,7 +4,14 @@ Versions follow [SemVer](https://semver.org). Newest first.
 
 Only x.x.0 versions are stable releases; every QA build in between takes the next last number, 1.0.1, 1.0.2, ... (owner, 2026-10-19).
 
-## Unreleased (next: 1.0.0, the first stable, if 1.0.4 checks out)
+## Unreleased (next QA build: 1.0.5)
+
+## 1.0.0 (2026-10-19): the first stable release
+The code of QA build 1.0.4, which passed on Windows (owner: "all works"), Linux and the owner's phone. Highlights since the
+1.0.0-beta.1 of 2026-10-16: handwriting search through the AI and Find in typed and PDF text; Convert to LaTeX; pictures in
+notes; split view (resizable, saved groups); PDF text and highlights; palm rejection and lasso fixes; Android Google sign-in with
+the phone's account; the app icon; README for users and the MIT license. Details: the QA builds below. Next: 1.1.0, the AI tutor
+/ agent for students and researchers.
 
 ## 1.0.4 (2026-10-19)
 QA build (internal), the candidate for 1.0.0. Since 1.0.3:

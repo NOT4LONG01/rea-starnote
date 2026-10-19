@@ -56,7 +56,7 @@ the top lists them.
 - **Split view** (the split button in the top bar): pick another open note, a recent one or a PDF to show beside the current
   one (one above the other on a tall screen). Each half has its own pages, zoom and undo; the tools work on the half you
   touched last (its head is tinted). Tapping the other half's tab moves there; the × on a half closes it (the other note
-  fills the window), and the button or Back ends the split. Drag the divider between the halves to give one more room (20-80%;
+  fills the window), and Back (or the split button > *End split*) ends the split. Drag the divider between the halves to give one more room (20-80%;
   remembered, and a saved group keeps its own sizes); double-click it for half and half.
   **Groups:** while split, the split button offers *Save as a group…*: name the pair and it is listed under *Groups* in
   the library sidebar (and at the top of the split button's list); one tap opens both notes side by side again. Its ⋯ renames
